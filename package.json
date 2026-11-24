@@ -1,0 +1,29 @@
+{
+  "name": "hajoom",
+  "version": "0.1.0",
+  "private": true,
+  "description": "هجوم - منصة نقل وإدارة الوقود للشركات (المرحلة الأولى)",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "seed": "node --no-warnings server/seed.js",
+    "start": "node --no-warnings server/index.js",
+    "dev:web": "vite web",
+    "build": "vite build web",
+    "test": "node --no-warnings --test --test-reporter=spec tests/acceptance.test.js"
+  },
+  "dependencies": {
+    "express": "^4.22.3",
+    "multer": "^1.4.5-lts.2",
+    "pdfjs-dist": "^4.10.38"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "lucide-react": "^0.460.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^5.4.21"
+  }
+}
