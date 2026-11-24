@@ -42,6 +42,18 @@ export function createApp() {
     audit({ userId: u.id, companyId: m.company_id, role: m.role }, 'auth.login', 'user', u.id);
     return { token, memberships: ms.map((x) => ({ ...x, role_ar: ROLE_LABELS[x.role] })) };
   }));
+  // وضع العرض المفتوح: دخول بلا بريد ولا كلمة مرور — للنسخة التجريبية فقط ويُفعَّل بمتغير بيئة
+  const openDemo = () => process.env.FUELAPP_OPEN_DEMO === '1';
+  api.get('/demo/config', h(() => ({ open: openDemo() })));
+  api.post('/demo/enter', h((req) => {
+    if (!openDemo()) throw new HttpError(404, 'المسار غير موجود');
+    const email = String(req.body?.email || 'admin@fuelapp.demo').toLowerCase().trim();
+    const m = q.get(`SELECT m.id, m.user_id, m.company_id, m.role FROM memberships m JOIN users u ON u.id = m.user_id JOIN companies c ON c.id = m.company_id
+        WHERE u.email = ? AND m.active = 1 AND c.is_demo = 1 ORDER BY m.rowid LIMIT 1`, email);
+    if (!m) throw new HttpError(404, 'الحساب غير موجود');
+    audit({ userId: m.user_id, companyId: m.company_id, role: m.role }, 'auth.demo_enter', 'user', m.user_id, { ip: req.ip });
+    return { token: createSession(m.user_id, m.id) };
+  }));
   api.post('/auth/switch', requireAuth, h((req) => {
     const m = q.get('SELECT * FROM memberships WHERE id = ? AND user_id = ? AND active = 1', req.body.membership_id, req.ctx.userId);
     if (!m) throw new HttpError(403, 'عضوية غير صالحة');

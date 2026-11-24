@@ -6,7 +6,7 @@ import {
   Menu, Bell, LogOut, Users, Route, ShieldCheck, ClipboardCheck, Crown, Headset, UserCog,
 } from 'lucide-react';
 import './styles.css';
-import { api, auth, usePath, navigate, match, useApi, ago } from './lib.js';
+import { api, auth, usePath, navigate, match, useApi, ago, demoEnter, fail } from './lib.js';
 import { Toaster, Spinner } from './ui.jsx';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -69,7 +69,9 @@ function routes(me) {
   ];
 }
 
-function Shell({ me, reloadMe }) {
+function Shell({ me, reloadMe, openDemo }) {
+  const accounts = useApi(openDemo ? '/demo-accounts' : null, [openDemo]);
+  const enterAs = async (email) => { try { await demoEnter(email); navigate('/'); reloadMe(); } catch (e) { fail(e); } };
   const path = usePath();
   const [open, setOpen] = useState(false);
   const [bell, setBell] = useState(false);
@@ -80,7 +82,7 @@ function Shell({ me, reloadMe }) {
   for (const [p, C] of routes(me)) { const m = match(p, path); if (m) { page = C; params = m; break; } }
   const Page = page || (() => <div className="empty">الصفحة غير موجودة</div>);
   const switchTo = async (id) => { const r = await api('/auth/switch', { method: 'POST', body: { membership_id: id } }); auth.token = r.token; navigate('/'); reloadMe(); };
-  const logout = async () => { try { await api('/auth/logout', { method: 'POST' }); } catch {} auth.token = null; location.href = '/'; };
+  const logout = async () => { try { await api('/auth/logout', { method: 'POST' }); } catch {} auth.token = null; try { sessionStorage.setItem('hj_manual', '1'); } catch {} location.href = '/'; };
   useEffect(() => setOpen(false), [path]);
   const initials = (me.company.name.replace(/[()]/g, '').split(/\s+/).find((w) => !['شركة', 'مصنع', 'مؤسسة'].includes(w)) || 'ه').replace(/^ال/, '')[0];
   return (
@@ -112,7 +114,7 @@ function Shell({ me, reloadMe }) {
           </div>
         </aside>
         <div className="main">
-          <div className="rolebar"><UserCog size={18} /><span className="grow">أنت تستخدم حساب {me.role_ar} في {me.company.name}</span><span className="demo-badge" style={{ background: 'rgba(255,255,255,.16)', color: '#fff', borderColor: 'rgba(255,255,255,.25)' }}>بيانات تجريبية</span><button onClick={logout}>خروج</button></div>
+          <div className="rolebar"><UserCog size={18} /><span className="grow">أنت تستخدم حساب {me.role_ar} في {me.company.name}{openDemo && ' — وضع العرض: الدخول بلا كلمة مرور'}</span><span className="demo-badge" style={{ background: 'rgba(255,255,255,.16)', color: '#fff', borderColor: 'rgba(255,255,255,.25)' }}>بيانات تجريبية</span><button onClick={logout}>خروج</button></div>
           <div className="top">
             <button className="circle-btn menu-btn" onClick={() => setOpen(!open)} aria-label="القائمة"><Menu size={20} /></button>
             <div id="page-title" className="grow" />
@@ -130,6 +132,11 @@ function Shell({ me, reloadMe }) {
                 </div>
               )}
             </div>
+            {openDemo && accounts.data && (
+              <select className="input" style={{ width: 'auto', maxWidth: 260, borderRadius: 22 }} value={me.user.email} onChange={(e) => enterAs(e.target.value)} aria-label="تبديل الحساب بلا كلمة مرور" title="وضع العرض: تبديل الحساب بلا كلمة مرور">
+                {[...new Map(accounts.data.map((a) => [a.email, a])).values()].map((a) => <option key={a.email} value={a.email}>{a.name} — {a.role_ar} · {a.company}</option>)}
+              </select>
+            )}
             <div className="who"><span className="nm">{me.user.name}</span><span className="av">{me.user.name.replace(/^م\.\s*/, '')[0]}</span></div>
           </div>
           <div className="content"><Page {...params} key={path.split('?')[0]} /></div>
@@ -143,13 +150,23 @@ function Shell({ me, reloadMe }) {
 function App() {
   const path = usePath();
   const [me, setMe] = useState(undefined);
-  const load = () => (auth.token ? api('/me').then(setMe).catch(() => setMe(null)) : setMe(null));
+  const [open, setOpen] = useState(false);
+  const load = async () => {
+    if (!auth.token) {
+      const cfg = await api('/demo/config').catch(() => ({ open: false }));
+      setOpen(cfg.open);
+      let manual = false; try { manual = sessionStorage.getItem('hj_manual') === '1'; } catch {}
+      if (cfg.open && !manual) { try { await demoEnter(); } catch { return setMe(null); } }
+      else return setMe(null);
+    }
+    return api('/me').then((m) => { setMe(m); api('/demo/config').then((c) => setOpen(c.open)).catch(() => {}); }).catch(() => setMe(null));
+  };
   useEffect(() => { load(); }, []);
   const r = match('/r/:token', path);
   if (r) return <Receipt token={r.token} />;
   if (me === undefined) return <Spinner />;
-  if (!me) return <Login onDone={load} />;
-  return <Shell me={me} reloadMe={load} />;
+  if (!me) return <Login onDone={load} open={open} />;
+  return <Shell me={me} reloadMe={load} openDemo={open} />;
 }
 
 createRoot(document.getElementById('root')).render(<><App /><Toaster /></>);

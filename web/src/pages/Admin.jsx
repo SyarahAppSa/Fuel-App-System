@@ -1,6 +1,7 @@
 import React from 'react';
 import { Building2, Truck, Wallet, Nfc } from 'lucide-react';
-import { api, useApi, sar, n, dOnly, fail, toast } from '../lib.js';
+import { api, useApi, sar, n, dOnly, fail, toast, demoEnter } from '../lib.js';
+import { UserRound } from 'lucide-react';
 import { Card, Chip, Spinner, Kpi } from '../ui.jsx';
 import { Title } from '../ctx.jsx';
 
@@ -9,6 +10,8 @@ const ST = { pending: ['بانتظار الاعتماد', 'warn'], approved: ['�
 
 export default function Admin() {
   const r = useApi('/admin/overview');
+  const cfg = useApi('/demo/config');
+  const accts = useApi(cfg.data?.open ? '/demo-accounts' : null, [cfg.data?.open]);
   if (!r.data) return <Spinner />;
   const d = r.data;
   const act = async (path, body) => { try { await api(path, { method: 'POST', body }); toast('تم'); r.reload(); } catch (e) { fail(e); } };
@@ -22,6 +25,14 @@ export default function Admin() {
         <Kpi icon={Truck} label="الرحلات" value={d.trips_by_status.reduce((s, x) => s + x.n, 0)} foot={d.trips_by_status.map((s) => `${s.label} ${s.n}`).join(' · ')} />
         <Kpi icon={Nfc} label="شرائح نشطة / عمليات تزويد" value={`${d.totals.tags} / ${n(d.totals.fuelings)}`} foot={`${d.totals.assets} أصل مسجل`} />
       </div>
+      {cfg.data?.open && accts.data && (
+        <Card className="mt" title="ادخل إلى أي حساب (وضع العرض — بلا كلمة مرور)">
+          {Object.entries(accts.data.reduce((g, a) => { if (!g[a.company]?.some((x) => x.email === a.email)) (g[a.company] ||= []).push(a); return g; }, {})).map(([co, list]) => (
+            <div key={co} className="mb"><div className="small muted" style={{ marginBottom: 6 }}>{co}</div>
+              <div className="row">{list.map((a) => <button key={a.email} className="acct" style={{ width: 'auto' }} onClick={async () => { try { await demoEnter(a.email); location.href = '/'; } catch (e) { fail(e); } }}>
+                <UserRound size={15} color="var(--brand)" /><span><b className="small">{a.name}</b><span className="tiny muted"> · {a.role_ar}</span></span></button>)}</div></div>))}
+        </Card>
+      )}
       <Card className="mt" title="الشركات" flush><table className="t"><thead><tr><th>الشركة</th><th>النوع</th><th>المدينة</th><th>وثائق معلقة</th><th>الرحلات</th><th>الحالة</th><th></th></tr></thead>
         <tbody>{d.companies.map((c) => <tr key={c.id}><td><b>{c.name_ar}</b><div className="tiny muted">س.ت {c.cr_number}</div></td><td>{{ client: 'عميل', carrier: 'ناقل', supplier: 'مورد' }[c.type]}</td><td>{c.city}</td><td>{c.pending_docs || '—'}</td><td>{c.trips}</td>
           <td><Chip tone={ST[c.status][1]}>{ST[c.status][0]}</Chip></td>

@@ -315,3 +315,17 @@ test('10. التسليم بفرق كمية واعتراض المستلم يذه�
   const mov = q.get("SELECT quantity_ml FROM fuel_movements WHERE kind='receipt' AND ref_id = ?", s.id);
   assert.equal(mov.quantity_ml, 7_750_000);
 });
+
+test('11. الدخول المفتوح مغلق افتراضيًا، ويعمل فقط عند تفعيل وضع العرض', async () => {
+  assert.deepEqual((await call('GET', '/demo/config')).body, { open: false });
+  assert.equal((await call('POST', '/demo/enter', {})).status, 404);
+  process.env.FUELAPP_OPEN_DEMO = '1';
+  try {
+    const r = ok(await call('POST', '/demo/enter', {}));
+    const me = await fetch(base + '/me', { headers: { Authorization: 'Bearer ' + r.token } }).then((x) => x.json());
+    assert.equal(me.role, 'platform_admin');
+    const c = ok(await call('POST', '/demo/enter', { email: 'driver1@fuelapp.demo' }));
+    assert.equal((await fetch(base + '/me', { headers: { Authorization: 'Bearer ' + c.token } }).then((x) => x.json())).role, 'driver');
+    assert.equal((await call('POST', '/demo/enter', { email: 'nobody@x.com' })).status, 404);
+  } finally { delete process.env.FUELAPP_OPEN_DEMO; }
+});

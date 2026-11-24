@@ -24,6 +24,14 @@ export async function api(path, { method = 'GET', body, form } = {}) {
   return data;
 }
 
+/** وضع العرض المفتوح: دخول بحساب تجريبي دون كلمة مرور */
+export async function demoEnter(email) {
+  const r = await api('/demo/enter', { method: 'POST', body: email ? { email } : {} });
+  auth.token = r.token;
+  try { sessionStorage.removeItem('hj_manual'); } catch {}
+  return r;
+}
+
 export function useApi(path, deps = []) {
   const [state, set] = useState({ data: null, error: null, loading: true });
   const load = useCallback(() => {

@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { LogIn, Building2, Truck, UserRound, ShieldCheck } from 'lucide-react';
-import { api, auth, useApi, fail } from '../lib.js';
+import { api, auth, useApi, fail, demoEnter } from '../lib.js';
 
 const TYPE = { client: ['الشركات العميلة', Building2], carrier: ['الناقلون والسائقون', Truck], platform: ['إدارة فيول آب', ShieldCheck] };
 
-export default function Login({ onDone }) {
+export default function Login({ onDone, open }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const demo = useApi('/demo-accounts');
   async function login(e, em = email, pw = password) {
     e?.preventDefault(); setBusy(true);
+    if (open && em && pw === 'FuelApp@2026' && !e) { try { await demoEnter(em); history.replaceState(null, '', '/'); onDone(); } catch (err) { fail(err); } finally { setBusy(false); } return; }
     try {
       const r = await api('/auth/login', { method: 'POST', body: { email: em, password: pw } });
       auth.token = r.token; history.replaceState(null, '', '/'); onDone();
@@ -47,7 +48,8 @@ export default function Login({ onDone }) {
           <button className="btn primary lg" disabled={busy}><LogIn size={18} /> دخول</button>
         </form>
         <div className="sep" style={{ margin: '22px 0 14px' }} />
-        <div className="small muted mb">حسابات التجربة (كلمة المرور: <b className="num">FuelApp@2026</b>)</div>
+        {open && <button className="btn primary lg block mb" disabled={busy} onClick={async () => { setBusy(true); try { await demoEnter(); history.replaceState(null, '', '/'); onDone(); } catch (err) { fail(err); } finally { setBusy(false); } }}>دخول بوابة الإدارة مباشرة (بلا كلمة مرور)</button>}
+        <div className="small muted mb">{open ? 'أو اختر أي حساب تجريبي — دخول بضغطة دون كلمة مرور' : <>حسابات التجربة (كلمة المرور: <b className="num">FuelApp@2026</b>)</>}</div>
         <div className="stack" style={{ gap: 14, maxHeight: '52vh', overflowY: 'auto', paddingInlineEnd: 4 }}>
           {['client', 'carrier', 'platform'].filter((t) => groups[t]).map((t) => {
             const [label, I] = TYPE[t];
