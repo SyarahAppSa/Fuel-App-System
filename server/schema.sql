@@ -487,3 +487,100 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE TABLE IF NOT EXISTS counters (name TEXT PRIMARY KEY, value INTEGER NOT NULL);
+
+-- ========== العقود والباقات وحجز السعة (نسخة الشركات) ==========
+-- عقد شهري أو سنوي بين عميل وناقل: أسعار حسب المسار، سعة مضمونة، مستوى خدمة، تجديد، وشروط ناقل بديل
+CREATE TABLE IF NOT EXISTS contracts (
+  id TEXT PRIMARY KEY,
+  number TEXT NOT NULL UNIQUE,
+  client_id TEXT NOT NULL REFERENCES companies(id),
+  carrier_id TEXT NOT NULL REFERENCES companies(id),
+  type TEXT NOT NULL CHECK (type IN ('monthly','annual')),
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  guaranteed_trips_per_month INTEGER NOT NULL DEFAULT 0,
+  sla_on_time_pct INTEGER NOT NULL DEFAULT 95,
+  delivery_window_hours INTEGER NOT NULL DEFAULT 8,
+  auto_renew INTEGER NOT NULL DEFAULT 0,
+  allow_backup_carrier INTEGER NOT NULL DEFAULT 0,
+  max_backup_price_diff_pct INTEGER,
+  status TEXT NOT NULL DEFAULT 'pending_carrier' CHECK (status IN ('pending_carrier','active','rejected','terminated')),
+  notes TEXT,
+  created_by TEXT, accepted_by TEXT, accepted_at TEXT, decision_reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE IF NOT EXISTS contract_rates (
+  id TEXT PRIMARY KEY,
+  contract_id TEXT NOT NULL REFERENCES contracts(id),
+  loading_point_id TEXT NOT NULL REFERENCES loading_points(id),
+  delivery_city TEXT NOT NULL,
+  product TEXT NOT NULL,
+  pricing_type TEXT NOT NULL CHECK (pricing_type IN ('fixed','per_1000l')),
+  price_halalas INTEGER NOT NULL,
+  waiting_fee_halalas_per_hour INTEGER NOT NULL DEFAULT 0,
+  cancel_fee_halalas INTEGER NOT NULL DEFAULT 0,
+  free_waiting_hours INTEGER NOT NULL DEFAULT 2,
+  accept_within_minutes INTEGER NOT NULL DEFAULT 60
+);
+
+-- باقة رحلات مدفوعة مسبقًا: الرصيد يُحجز عند الطلب، ويُخصم عند التسليم، ويعود عند الإلغاء/الرفض
+CREATE TABLE IF NOT EXISTS trip_packages (
+  id TEXT PRIMARY KEY,
+  number TEXT NOT NULL UNIQUE,
+  client_id TEXT NOT NULL REFERENCES companies(id),
+  carrier_id TEXT NOT NULL REFERENCES companies(id),
+  contract_id TEXT REFERENCES contracts(id),
+  loading_point_id TEXT NOT NULL REFERENCES loading_points(id),
+  delivery_city TEXT NOT NULL,
+  product TEXT NOT NULL,
+  max_liters_per_trip_ml INTEGER NOT NULL,
+  total_trips INTEGER NOT NULL CHECK (total_trips > 0),
+  price_halalas INTEGER NOT NULL,
+  start_date TEXT NOT NULL,
+  expiry_date TEXT NOT NULL,
+  late_cancel_consumes INTEGER NOT NULL DEFAULT 1,  -- إلغاء بعد قبول الناقل يخصم الرحلة
+  status TEXT NOT NULL DEFAULT 'pending_carrier' CHECK (status IN ('pending_carrier','active','rejected','cancelled')),
+  created_by TEXT, accepted_by TEXT, accepted_at TEXT, decision_reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE IF NOT EXISTS package_allocations (
+  id TEXT PRIMARY KEY,
+  package_id TEXT NOT NULL REFERENCES trip_packages(id),
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  trips INTEGER NOT NULL CHECK (trips >= 0),
+  UNIQUE (package_id, project_id)
+);
+CREATE TABLE IF NOT EXISTS package_ledger (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  package_id TEXT NOT NULL REFERENCES trip_packages(id),
+  trip_id TEXT NOT NULL REFERENCES trips(id),
+  project_id TEXT,
+  kind TEXT NOT NULL CHECK (kind IN ('reserve','consume','release')),
+  note TEXT,
+  at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  UNIQUE (package_id, trip_id, kind)            -- لا خصم ولا حجز مزدوج للرحلة نفسها
+);
+
+-- حجز سعة: عدد رحلات لمنطقة ومنتج خلال فترة، موزعة على مشاريع العميل، ويؤكدها الناقل بعد فحص سعته
+CREATE TABLE IF NOT EXISTS capacity_reservations (
+  id TEXT PRIMARY KEY,
+  number TEXT NOT NULL UNIQUE,
+  client_id TEXT NOT NULL REFERENCES companies(id),
+  carrier_id TEXT NOT NULL REFERENCES companies(id),
+  contract_id TEXT REFERENCES contracts(id),
+  delivery_city TEXT NOT NULL,
+  product TEXT NOT NULL,
+  period_start TEXT NOT NULL,
+  period_end TEXT NOT NULL,
+  trips INTEGER NOT NULL CHECK (trips > 0),
+  status TEXT NOT NULL DEFAULT 'pending_carrier' CHECK (status IN ('pending_carrier','confirmed','rejected','cancelled')),
+  created_by TEXT, confirmed_by TEXT, confirmed_at TEXT, decision_reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE IF NOT EXISTS capacity_allocations (
+  id TEXT PRIMARY KEY,
+  reservation_id TEXT NOT NULL REFERENCES capacity_reservations(id),
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  trips INTEGER NOT NULL CHECK (trips >= 0),
+  UNIQUE (reservation_id, project_id)
+);

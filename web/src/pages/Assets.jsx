@@ -100,14 +100,19 @@ export function AssetList() {
   );
 }
 
-function SourceChain({ r }) {
+export function SourceChain({ r, big }) {
+  const go = (to) => (e) => { e.stopPropagation(); navigate(to); };
+  const L = ({ to, children, tone = 'lnk' }) => <a href={to} onClick={go(to)} className={tone} style={{ cursor: 'pointer', textDecoration: big ? 'underline' : undefined }}>{children}</a>;
   if (r.source_type === 'batch') {
     const s = r.source_chain[0] || {};
-    return <div className="chain"><span className="chip brand">تزويد مباشر</span>← <span className="lnk">رحلة {s.trip_number}</span>← <span className="lnk">طلب {s.order_number}</span>{s.doc_number && <>← <span className="lnk">مستند {s.doc_number}</span></>}</div>;
+    return <div className="chain"><span className="chip brand">تزويد مباشر</span>← <L to={'/trips/' + s.trip_id}>رحلة {s.trip_number}</L>← <L to={'/trips/' + s.trip_id + '#order'}>طلب {s.order_number}</L>{s.doc_number && <>← <span className="lnk">مستند {s.doc_number}</span></>}</div>;
   }
+  const c = r.source_chain.filter((x) => x.trip_id)[0];
   return (
-    <div className="chain"><span className="chip info">خزان {r.tank_code}</span>
-      {r.source_chain.length ? <>← {r.source_chain.slice(0, 2).map((c, i) => <span key={i} className="lnk" title={c.carrier_name || ''}>{c.kind === 'opening' ? 'رصيد افتتاحي' : c.kind === 'transfer_in' ? 'تحويل وارد' : `استلام ${c.trip_number}${c.doc_number ? ' · ' + c.doc_number : ''}`}</span>)}<span className="tiny muted">(متوسط مرجّح)</span></> : null}
+    <div className="chain"><L to={'/tanks/' + r.tank_id} tone="chip info">خزان {r.tank_code}</L>
+      {c ? <>← <L to={'/trips/' + c.trip_id}>رحلة {c.trip_number}</L>← <L to={'/trips/' + c.trip_id + '#order'}>طلب {c.order_number}</L>{c.doc_number && <>← <span className="lnk">مستند {c.doc_number}</span></>}</>
+        : r.source_chain[0] ? <>← <span className="lnk">{r.source_chain[0].kind === 'opening' ? 'رصيد افتتاحي' : 'تحويل وارد'}</span></> : null}
+      {r.source_chain.filter((x) => x.trip_id).length > 1 && <span className="tiny muted">(+{r.source_chain.filter((x) => x.trip_id).length - 1} استلام سابق · متوسط مرجّح)</span>}
     </div>
   );
 }
@@ -141,7 +146,7 @@ export function AssetReport({ id }) {
             <div className="row"><label className="field grow"><span>من</span><input type="date" className="input" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} /></label><label className="field grow"><span>إلى</span><input type="date" className="input" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} /></label></div>
             <div className="row no-print">
               <button className="btn sm" onClick={() => print()}><Printer size={14} /> طباعة / PDF</button>
-              <a className="btn sm" href={`/api/reports/fuelings.csv?asset_id=${a.id}&${qs}&token=${auth.token}`}><Download size={14} /> Excel/CSV</a>
+              <a className="btn sm" href={`/api/reports/fuelings.xlsx?asset_id=${a.id}&${qs}&token=${auth.token}`}><Download size={14} /> Excel</a>
               {can(me, 'asset.manage') && <button className="btn sm" onClick={() => setModal('move')}><ArrowLeftRight size={14} /> نقل لمشروع</button>}
               {can(me, 'asset.manage') && <button className="btn sm" onClick={() => setModal('edit')}>تعديل</button>}
             </div>

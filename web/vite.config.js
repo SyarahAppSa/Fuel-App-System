@@ -4,5 +4,5 @@ export default defineConfig({
   root: __dirname,
   plugins: [react()],
   server: { port: 5173, proxy: { '/api': 'http://localhost:3000' } },
-  build: { outDir: 'dist', emptyOutDir: true, chunkSizeWarningLimit: 1200 },
+  build: { outDir: 'dist', assetsDir: '_app', emptyOutDir: true, chunkSizeWarningLimit: 1200 },
 });

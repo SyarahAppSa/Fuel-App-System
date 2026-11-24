@@ -81,6 +81,7 @@ function ConfirmModal({ trip, stop, onClose, onDone }) {
 export function TripDetail({ id }) {
   const me = useMe();
   const r = useApi('/trips/' + id);
+  React.useEffect(() => { if (r.data && location.hash === '#order') setTimeout(() => { const el = document.getElementById('order'); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.firstChild.style.boxShadow = '0 0 0 3px var(--brand)'; } }, 150); }, [r.data]);
   const [modal, setModal] = useState(null);
   const t = r.data;
   if (r.error) return <Empty>{r.error.message}</Empty>;
@@ -151,6 +152,12 @@ export function TripDetail({ id }) {
           ))}
         </div>
         <div className="stack">
+          <div id="order"><Card title={`الطلب الأصلي ${t.order_number}`}>
+            <dl className="kv"><dt>أنشأه</dt><dd>{t.order_created_by || '—'}</dd><dt>وقت الطلب</dt><dd>{dt(t.order_created_at)}</dd>
+              <dt>الكمية المطلوبة</dt><dd className="num">{liters(t.quantity_ml)} لتر</dd><dt>المشروع</dt><dd>{t.project_name || '—'}</dd>
+              <dt>مستند أرامكو</dt><dd className="num">{t.doc_number || '—'}</dd><dt>نقطة التحميل</dt><dd>{t.loading_point_name}</dd>
+              <dt>أساس السعر</dt><dd>{t.package_number ? <Chip tone="brand">باقة {t.package_number}</Chip> : t.contract_number ? <Chip tone="info">عقد {t.contract_number}</Chip> : 'سعر السوق المنشور'}{t.reservation_number && <> <Chip>حجز سعة {t.reservation_number}</Chip></>}</dd></dl>
+          </Card></div>
           {t.price && (
             <Card title="السعر المتفق عليه">
               <dl className="kv"><dt>أجرة النقل</dt><dd className="num">{sar(t.price.base_halalas)} ر.س</dd><dt>رسوم خدمة فيول آب</dt><dd className="num">{sar(t.price.platform_fee_halalas)}</dd>

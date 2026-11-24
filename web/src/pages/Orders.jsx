@@ -68,14 +68,14 @@ export function NewOrder() {
     if (total * 1000 > doc.quantities.available_ml) return fail(`الكمية تتجاوز المتاح في المستند (${liters(doc.quantities.available_ml)} لتر)`);
     setBusy(true); setOffers(null);
     try {
-      const qs = new URLSearchParams({ loading_point_id: doc.loading_point_id, city: site0.city, product: doc.product, quantity_liters: total, date: del.date, window_start: del.window_start, window_end: del.window_end });
+      const qs = new URLSearchParams({ loading_point_id: doc.loading_point_id, city: site0.city, product: doc.product, quantity_liters: total, date: del.date, window_start: del.window_start, window_end: del.window_end, project_id: site0.project_id || '' });
       setOffers(await api('/market/search?' + qs)); setStep('carrier');
     } catch (e) { fail(e); } finally { setBusy(false); }
   }
   async function submit() {
     setBusy(true);
     try {
-      const r = await api('/orders', { method: 'POST', body: { route_price_id: offer.route_price_id, aramco_document_id: doc.id, ...del, idempotency_key: idem } });
+      const r = await api('/orders', { method: 'POST', body: { route_price_id: offer.route_price_id, contract_rate_id: offer.contract_rate_id, package_id: offer.package_id, project_id: site0?.project_id, aramco_document_id: doc.id, ...del, idempotency_key: idem } });
       toast(`أُرسل الطلب ${r.order_number || ''} للناقل`); navigate('/trips/' + r.trip_id);
     } catch (e) { fail(e); } finally { setBusy(false); }
   }
@@ -109,6 +109,7 @@ export function NewOrder() {
                 <div className="small muted">يُفحص نوع الملف، ثم تُستخرج البيانات وتعرض بجانب الملف للمراجعة. لا يُكشف المستند للناقل قبل قبول الرحلة.</div>
                 <input type="file" accept="application/pdf" hidden onChange={(e) => e.target.files[0] && upload(e.target.files[0])} />
               </label>
+              <div className="row mt small"><span className="muted">لا يوجد مستند للتجربة؟</span><a className="btn sm" href={`/api/demo/sample-aramco.pdf?liters=20000&token=${auth.token}`}>تنزيل مستند أرامكو تجريبي (20,000 لتر)</a></div>
             </Card>
           </div>
         )
@@ -161,9 +162,9 @@ export function NewOrder() {
           actions={<button className="btn sm" onClick={() => setStep('delivery')}>تعديل التسليم</button>}>
           {offers.length === 0 ? <Empty>لا يوجد ناقل يغطي هذا المسار والمنتج</Empty> : (
             <div className="stack">{offers.map((o) => (
-              <div key={o.route_price_id} className={'offer' + (offer?.route_price_id === o.route_price_id ? ' sel' : '') + (!o.available ? ' na' : '')}>
+              <div key={o.route_price_id || o.contract_rate_id || o.package_id} className={'offer' + (offer === o ? ' sel' : '') + (!o.available ? ' na' : '')}>
                 <div>
-                  <div className="row"><Truck size={18} color="var(--ink-3)" /><b>{o.carrier_name}</b>{o.available ? <Chip tone="good">متاح</Chip> : <Chip tone="bad">غير متاح في الموعد</Chip>}</div>
+                  <div className="row"><Truck size={18} color="var(--ink-3)" /><b>{o.carrier_name}</b>{o.kind === 'contract' && <Chip tone="info">سعر العقد {o.contract_number}</Chip>}{o.kind === 'package' && <Chip tone="brand">باقة {o.package_number} · متوافر {o.package_balance.project_available}</Chip>}{o.available ? <Chip tone="good">متاح</Chip> : <Chip tone="bad">{o.blocked_reasons?.[0] || 'غير متاح في الموعد'}</Chip>}</div>
                   <div className="small muted" style={{ marginTop: 4 }}>{o.available_vehicles} صهريج مؤهل (حتى {n(o.best_vehicle_capacity_liters)} لتر) · {o.available_drivers} سائق متاح</div>
                 </div>
                 <div className="small">
@@ -172,10 +173,10 @@ export function NewOrder() {
                 </div>
                 <div className="small">
                   <div className="price-big"><span className="num">{sar(o.quote.total_halalas)}</span> <span className="small muted">ر.س</span></div>
-                  <div className="tiny muted">أجرة {sar(o.quote.base_halalas)} {o.quote.pricing_type === 'per_1000l' ? `(${sar(o.quote.unit_price_halalas)}/1000 لتر)` : '(سعر ثابت للمسار)'} + خدمة {o.quote.platform_commission_pct}% + ض.ق.م {sar(o.quote.vat_halalas)}</div>
+                  {o.kind === 'package' ? <div className="tiny muted">{o.quote.note}</div> : <div className="tiny muted">أجرة {sar(o.quote.base_halalas)} {o.quote.pricing_type === 'per_1000l' ? `(${sar(o.quote.unit_price_halalas)}/1000 لتر)` : '(سعر ثابت للمسار)'} + خدمة {o.quote.platform_commission_pct}% + ض.ق.م {sar(o.quote.vat_halalas)}</div>}
                   <div className="tiny muted">انتظار {sar(o.quote.terms.waiting_fee_halalas_per_hour)}/س بعد {o.quote.terms.free_waiting_hours} س · إلغاء {sar(o.quote.terms.cancel_fee_halalas)}</div>
                 </div>
-                <button className={'btn ' + (offer?.route_price_id === o.route_price_id ? 'primary' : '')} disabled={!o.available} onClick={() => { setOffer(o); setStep('review'); }}>اختيار</button>
+                <button className={'btn ' + (offer === o ? 'primary' : '')} disabled={!o.available} onClick={() => { setOffer(o); setStep('review'); }}>اختيار</button>
               </div>
             ))}</div>
           )}
@@ -193,7 +194,7 @@ export function NewOrder() {
               <dt>التسليم</dt><dd>{del.stops.map((s, i) => <div key={i}>{org.sites.find((x) => x.id === s.site_id)?.name} — <span className="num">{n(s.quantity_liters)}</span> لتر ({s.mode === 'tank' ? 'خزان ' + (org.tanks.find((t) => t.id === s.tank_id)?.code || '') : 'تزويد مباشر'})</div>)}</dd>
             </dl>
             <dl className="kv">
-              <dt>الناقل</dt><dd>{offer.carrier_name}</dd>
+              <dt>الناقل</dt><dd>{offer.carrier_name} {offer.kind === 'contract' && <Chip tone="info">عقد {offer.contract_number}</Chip>}{offer.kind === 'package' && <Chip tone="brand">باقة {offer.package_number}</Chip>}</dd>
               <dt>أجرة النقل</dt><dd><span className="num">{sar(offer.quote.base_halalas)}</span> ر.س</dd>
               <dt>رسوم الخدمة</dt><dd><span className="num">{sar(offer.quote.platform_fee_halalas)}</span> ر.س</dd>
               <dt>ض.ق.م 15%</dt><dd><span className="num">{sar(offer.quote.vat_halalas)}</span> ر.س</dd>

@@ -24,6 +24,7 @@ import { DriverHome, DriverTrip } from './pages/Driver.jsx';
 import Admin from './pages/Admin.jsx';
 import Receipt from './pages/Receipt.jsx';
 import Soon from './pages/Soon.jsx';
+import Contracts from './pages/Contracts.jsx';
 
 
 const CLIENT_NAV = [
@@ -38,7 +39,7 @@ const CLIENT_NAV = [
   { to: '/fuel', label: 'التزويد', icon: Fuel, cap: ['fueling.create', 'fueling.view'] },
   { to: '/tanks', label: 'الخزانات والمخزون', icon: Container, cap: 'inventory.view' },
   { grp: 'الإدارة' },
-  { to: '/contracts', label: 'العقود والباقات', icon: FileSignature, soon: true },
+  { to: '/contracts', label: 'العقود والباقات', icon: FileSignature, cap: ['order.create', 'report.view', 'finance.view'] },
   { to: '/approvals', label: 'الموافقات', icon: CheckSquare, cap: ['exception.decide', 'fueling.view'] },
   { to: '/reports', label: 'التقارير', icon: BarChart3, cap: ['report.view', 'inventory.view'] },
   { to: '/finance', label: 'المالية', icon: Wallet, soon: true },
@@ -49,6 +50,7 @@ const CARRIER_NAV = [
   { to: '/', label: 'نظرة عامة', icon: LayoutDashboard },
   { to: '/trips', label: 'الطلبات والرحلات', icon: Route },
   { to: '/fleet', label: 'الأسطول والأسعار', icon: Truck },
+  { to: '/contracts', label: 'العقود والباقات والسعة', icon: FileSignature },
 ];
 const DRIVER_NAV = [{ grp: 'السائق' }, { to: '/', label: 'رحلاتي', icon: Truck }];
 const RECEIVER_NAV = [{ grp: 'مستلم الموقع' }, { to: '/', label: 'رحلات موقعي', icon: ClipboardCheck }];
@@ -58,12 +60,12 @@ function routes(me) {
   const t = me.company.type, role = me.role;
   if (role === 'platform_admin') return [['/', Admin], ['/trips', TripList], ['/trips/:id', TripDetail]];
   if (role === 'driver') return [['/', DriverHome], ['/trips/:id', DriverTrip]];
-  if (t === 'carrier') return [['/', CarrierOverview], ['/trips', TripList], ['/trips/:id', TripDetail], ['/fleet', Fleet]];
+  if (t === 'carrier') return [['/', CarrierOverview], ['/trips', TripList], ['/trips/:id', TripDetail], ['/fleet', Fleet], ['/contracts', Contracts]];
   if (role === 'site_receiver') return [['/', TripList], ['/trips', TripList], ['/trips/:id', TripDetail]];
   return [
     ['/', role === 'fuel_supervisor' ? FuelSession : Dashboard], ['/dashboard', Dashboard], ['/orders/new', NewOrder], ['/documents', Documents], ['/trips', TripList], ['/trips/:id', TripDetail],
     ['/projects', Projects], ['/assets', AssetList], ['/assets/:id', AssetReport], ['/nfc', NfcTags], ['/fuel', FuelSession], ['/fuel/log', FuelLog], ['/fuelings/:id', FuelingDetail],
-    ['/tanks', Tanks], ['/tanks/:id', TankDetail], ['/approvals', Approvals], ['/reports', Reports], ['/settings', Settings], ['/contracts', Soon], ['/finance', Soon],
+    ['/tanks', Tanks], ['/tanks/:id', TankDetail], ['/approvals', Approvals], ['/reports', Reports], ['/settings', Settings], ['/contracts', Contracts], ['/finance', Soon],
   ];
 }
 
@@ -96,7 +98,7 @@ function Shell({ me, reloadMe }) {
             ))}
           </nav>
           <div className="foot">
-            {me.company.type === 'client' && <button className="pill" onClick={() => navigate('/contracts')}><Crown size={17} /> الباقة والاشتراك</button>}
+            {me.company.type === 'client' && <button className="pill" onClick={() => navigate('/contracts')}><Crown size={17} /> العقود والباقات</button>}
             <a className="pill" href="mailto:support@fuelapp.demo"><Headset size={17} /> الدعم والمساعدة</a>
           </div>
           <div className="me">

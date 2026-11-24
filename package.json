@@ -12,9 +12,10 @@
     "start": "node --no-warnings server/index.js",
     "dev:web": "vite web",
     "build": "vite build web",
-    "test": "node --no-warnings --test --test-reporter=spec tests/acceptance.test.js"
+    "test": "node --no-warnings --test --test-reporter=spec tests/acceptance.test.js tests/scenario.test.js tests/contracts.test.js"
   },
   "dependencies": {
+    "exceljs": "^4.4.0",
     "express": "^4.22.3",
     "multer": "^1.4.5-lts.2",
     "pdfjs-dist": "^4.10.38"

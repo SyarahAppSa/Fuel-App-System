@@ -4,6 +4,7 @@ import { api, useApi, navigate, liters, sar, n, dt, fail, toast, opId, auth, PRO
 import { Card, Chip, Spinner, Empty, Field, NfcReader, Alert, Modal } from '../ui.jsx';
 import { Title, useMe, can } from '../ctx.jsx';
 import * as outbox from '../outbox.js';
+import { SourceChain } from './Assets.jsx';
 
 export function SyncBar({ scope }) {
   const [items, setItems] = useState(outbox.items());
@@ -162,7 +163,7 @@ export function FuelLog() {
         <select className="input" value={f.tank_id} onChange={(e) => setF({ ...f, tank_id: e.target.value })}><option value="">كل الخزانات</option>{org?.tanks.map((p) => <option key={p.id} value={p.id}>{p.code}</option>)}</select>
         <select className="input" value={f.verification} onChange={(e) => setF({ ...f, verification: e.target.value })}><option value="">كل طرق التحقق</option>{Object.entries(VERIFY).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
         <div className="grow" />
-        <a className="btn" href={`/api/reports/fuelings.csv?${qs}&token=${auth.token}`}><Download size={15} /> تصدير Excel/CSV</a>
+        <a className="btn" href={`/api/reports/fuelings.xlsx?${qs}&token=${auth.token}`}><Download size={15} /> تصدير Excel</a><a className="btn ghost" href={`/api/reports/fuelings.csv?${qs}&token=${auth.token}`}>CSV</a>
         {can(me, 'fueling.create') && <button className="btn primary" onClick={() => navigate('/fuel')}><Fuel size={15} /> جلسة تزويد</button>}
       </div>
       <Card flush title={`${r.data?.length ?? 0} عملية · ${liters(sum)} لتر معتمد`}>{r.loading ? <Spinner /> : !r.data.length ? <Empty /> : <div className="tscroll"><table className="t">
@@ -199,7 +200,7 @@ export function FuelingDetail({ id }) {
           <dl className="kv">
             <dt>الحالة</dt><dd><Chip tone={x.status === 'approved' ? 'good' : 'bad'}>{x.status === 'approved' ? 'معتمدة' : x.status}</Chip> {x.reject_reason && <span className="small">{x.reject_reason}</span>}</dd>
             <dt>الأصل</dt><dd><a href={'/assets/' + x.asset_id} onClick={(e) => { e.preventDefault(); navigate('/assets/' + x.asset_id); }} style={{ color: 'var(--brand-2)' }}>{x.asset_code} — {x.asset_name}</a></dd>
-            <dt>الكمية</dt><dd className="num">{liters(x.quantity_ml, 3)} لتر ({x.measure_source})</dd>
+            <dt>الكمية</dt><dd><span className="num">{liters(x.quantity_ml, 3)}</span> لتر · {({ manual: 'تقدير يدوي', pump_meter: 'عداد المضخة', tank_dip: 'قياس الخزان', correction: 'تصحيح' })[x.measure_source] || x.measure_source}</dd>
             <dt>نوع الوقود</dt><dd>{PRODUCTS[x.product]}</dd>
             {can(me, 'price.view') && <><dt>التكلفة</dt><dd className="num">{x.cost_halalas == null ? 'غير متوفرة' : sar(x.cost_halalas) + ' ر.س'}</dd></>}
             <dt>التحقق</dt><dd>{VERIFY[x.verification]} {x.tag_display_no}</dd>
@@ -212,6 +213,23 @@ export function FuelingDetail({ id }) {
           </dl>
         </Card>
         <div className="stack">
+          <Card title="تتبع مصدر اللترات">
+            <ol className="tl" style={{ marginBottom: 10 }}>
+              <li className="done"><b className="small">العملية {x.number}</b><div className="tiny muted">{liters(x.quantity_ml, 1)} لتر ← {x.asset_code} · {x.operator_name}</div></li>
+              {x.source_type === 'tank' ? (<>
+                <li className="done"><a className="small" style={{ color: 'var(--brand)', fontWeight: 700 }} href={'/tanks/' + x.tank_id} onClick={(e) => { e.preventDefault(); navigate('/tanks/' + x.tank_id); }}>صُرفت من خزان {x.tank_code} — {x.tank_name}</a><div className="tiny muted">دفتر حركات الخزان (حركة صرف سالبة)</div></li>
+                {x.source_chain.filter((c) => c.trip_id).slice(0, 1).map((c) => (<React.Fragment key={c.trip_id}>
+                  <li className="done"><a className="small" style={{ color: 'var(--brand)', fontWeight: 700 }} href={'/trips/' + c.trip_id} onClick={(e) => { e.preventDefault(); navigate('/trips/' + c.trip_id); }}>دخلت الخزان من الرحلة {c.trip_number}</a><div className="tiny muted">{c.carrier_name} · استلام {liters(c.quantity_ml)} لتر في {dt(c.effective_at)}</div></li>
+                  <li className="done"><a className="small" style={{ color: 'var(--brand)', fontWeight: 700 }} href={'/trips/' + c.trip_id + '#order'} onClick={(e) => { e.preventDefault(); navigate('/trips/' + c.trip_id + '#order'); }}>طلب النقل الأصلي {c.order_number}</a><div className="tiny muted">أنشأه {c.order_created_by} في {dt(c.order_created_at)} · مستند أرامكو {c.doc_number}</div></li>
+                </React.Fragment>))}
+              </>) : (<>
+                <li className="done"><a className="small" style={{ color: 'var(--brand)', fontWeight: 700 }} href={'/trips/' + x.trip_ref_id} onClick={(e) => { e.preventDefault(); navigate('/trips/' + x.trip_ref_id); }}>تزويد مباشر من الرحلة {x.trip_number}</a></li>
+                <li className="done"><a className="small" style={{ color: 'var(--brand)', fontWeight: 700 }} href={'/trips/' + x.trip_ref_id + '#order'} onClick={(e) => { e.preventDefault(); navigate('/trips/' + x.trip_ref_id + '#order'); }}>طلب النقل الأصلي {x.order_number}</a><div className="tiny muted">مستند أرامكو {x.doc_number}</div></li>
+              </>)}
+            </ol>
+            <SourceChain r={x} big />
+            {x.source_type === 'tank' && x.source_chain.filter((c) => c.trip_id).length > 1 && <div className="tiny muted mt">الخزان استلم من أكثر من رحلة؛ التكلفة بالمتوسط المرجح ويظهر آخر استلام قبل العملية.</div>}
+          </Card>
           {x.corrections.length > 0 && <Card title="حركات التصحيح">{x.corrections.map((c) => <div key={c.number} className="small"><b className="num">{c.number}</b> · <span className="num">{liters(c.quantity_ml, 1)}</span> لتر · {c.reason} · {dt(c.created_at)}</div>)}</Card>}
           <Card title="سجل التدقيق">{x.audit.map((a) => <div key={a.id} className="small" style={{ marginBottom: 6 }}><b>{a.action}</b> · {a.by_name} · {dt(a.at)}<div className="tiny muted" style={{ direction: 'ltr', textAlign: 'right' }}>{a.data_json}</div></div>)}</Card>
         </div>

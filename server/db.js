@@ -16,7 +16,15 @@ export function openDb(file = process.env.FUELAPP_DB || path.join(ROOT, 'data', 
   db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;');
   db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
+  migrate(db);
   return db;
+}
+
+/** ترحيل قواعد البيانات القائمة: أعمدة أُضيفت بعد الإصدار الأول */
+function migrate(d) {
+  const cols = (t) => d.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name);
+  const oc = cols('orders');
+  for (const c of ['contract_id', 'contract_rate_id', 'package_id', 'reservation_id']) if (!oc.includes(c)) d.exec(`ALTER TABLE orders ADD COLUMN ${c} TEXT`);
 }
 
 export function getDb() {

@@ -9,6 +9,7 @@ import * as inv from './services/inventory.js';
 import * as fuel from './services/fueling.js';
 import * as docs from './services/documents.js';
 import { sampleAramcoPdf, makePng, PHOTO_COLORS } from './samples.js';
+import * as K from './services/contracts.js';
 
 export const DEMO_PASSWORD = 'FuelApp@2026';
 
@@ -246,6 +247,19 @@ async function seedHistory({ ctx, admin, supervisor }) {
 
   // جرد بفرق ينتظر الاعتماد
   inv.stockCount(supervisor, 'tnk_2', { measured_liters: 11935 });
+
+  // العقود والباقات وحجز السعة (تجريبي)
+  const carrierAdmin = ctx('carrier1@fuelapp.demo');
+  const c1 = K.createContract(procure, { carrier_id: 'co_car1', type: 'annual', start_date: day(-20), guaranteed_trips_per_month: 6, sla_on_time_pct: 95, auto_renew: true, allow_backup_carrier: true, max_backup_price_diff_pct: 10,
+    rates: [{ loading_point_id: 'lp_ryd', delivery_city: 'الرياض', product: 'diesel', pricing_type: 'fixed', price_sar: 1300, cancel_fee_sar: 250, waiting_fee_sar: 60 }] });
+  K.carrierDecide(carrierAdmin, 'contract', c1.id, { decision: 'accept' });
+  K.createContract(procure, { carrier_id: 'co_car2', type: 'monthly', start_date: day(1), guaranteed_trips_per_month: 4, rates: [{ loading_point_id: 'lp_ryd', delivery_city: 'الرياض', pricing_type: 'per_1000l', price_sar: 44 }] });
+  const pk = K.createPackage(procure, { carrier_id: 'co_car1', contract_id: c1.id, loading_point_id: 'lp_ryd', delivery_city: 'الرياض', product: 'diesel', total_trips: 10, price_sar: 12500, max_liters_per_trip: 36000,
+    start_date: day(-5), expiry_date: day(85), allocations: [{ project_id: 'prj_1', trips: 6 }, { project_id: 'prj_2', trips: 4 }] });
+  K.carrierDecide(carrierAdmin, 'package', pk.id, { decision: 'accept' });
+  const cp = K.createReservation(procure, { carrier_id: 'co_car1', delivery_city: 'الرياض', product: 'diesel', period_start: day(7), period_end: day(13), trips: 8, allocations: [{ project_id: 'prj_1', trips: 5 }, { project_id: 'prj_2', trips: 3 }] });
+  K.carrierDecide(carrierAdmin, 'capacity', cp.id, { decision: 'accept' });
+  K.createReservation(procure, { carrier_id: 'co_car1', delivery_city: 'الرياض', product: 'diesel', period_start: day(10), period_end: day(11), trips: 4 });
   void finance;
 }
 

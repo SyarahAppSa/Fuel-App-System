@@ -9,6 +9,8 @@ import * as inv from './services/inventory.js';
 import * as fuel from './services/fueling.js';
 import * as docs from './services/documents.js';
 import * as rep from './services/reports.js';
+import * as Con from './services/contracts.js';
+import { sampleAramcoPdf } from './samples.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
 const h = (fn) => (req, res, next) => { try { const r = fn(req, res); if (r instanceof Promise) r.then((v) => v !== undefined && !res.headersSent && res.json(v)).catch(next); else if (r !== undefined && !res.headersSent) res.json(r); } catch (e) { next(e); } };
@@ -199,7 +201,7 @@ export function createApp() {
     const f = q.get('SELECT id, created_at FROM fuelings WHERE id = ? AND company_id = ?', req.params.id, req.ctx.companyId); if (!f) throw new HttpError(404, 'العملية غير موجودة');
     const row = rep.fuelingRows(req.ctx, { limit: 5000 }).find((r) => r.id === f.id); if (!row) throw new HttpError(404, 'العملية غير موجودة');
     const corrections = q.all('SELECT number, quantity_ml, reject_reason reason, created_at FROM fuelings WHERE corrects_fueling_id = ?', f.id);
-    return { ...row, corrections, audit: q.all("SELECT a.*, u.name by_name FROM audit_log a LEFT JOIN users u ON u.id = a.user_id WHERE entity = 'fueling' AND entity_id = ? ORDER BY id", f.id) };
+    return { ...row, source_chain: rep.sourceChain(row), corrections, audit: q.all("SELECT a.*, u.name by_name FROM audit_log a LEFT JOIN users u ON u.id = a.user_id WHERE entity = 'fueling' AND entity_id = ? ORDER BY id", f.id) };
   }));
   api.post('/fuelings/:id/correct', ...C, requireCap('exception.decide'), h((req) => fuel.correctFueling(req.ctx, req.params.id, req.body)));
 
@@ -214,7 +216,7 @@ export function createApp() {
   api.post('/documents', ...C, requireCap('order.create'), upload.single('file'), h((req) => docs.uploadAramcoDocument(req.ctx, req.file)));
   api.get('/documents/:id', ...C, requireCap('order.create', 'doc.view'), h((req) => docs.getDocument(req.ctx, req.params.id)));
   api.post('/documents/:id/approve', ...C, requireCap('order.create'), h((req) => docs.approveDocument(req.ctx, req.params.id, req.body)));
-  api.get('/market/search', ...C, requireCap('order.create'), h((req) => trips.searchCarriers(req.query)));
+  api.get('/market/search', ...C, requireCap('order.create'), h((req) => trips.searchCarriers(req.query, req.ctx)));
   api.post('/orders', ...C, requireCap('order.create'), h((req) => trips.createOrder(req.ctx, req.body)));
   api.get('/trips', requireAuth, h((req) => {
     const c = req.ctx; const where = []; const p = [];
@@ -292,7 +294,45 @@ export function createApp() {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8'); res.setHeader('Content-Disposition', 'attachment; filename="fuelapp-fuelings.csv"');
     res.send(rep.toCsv(rows, rep.FUELING_CSV_COLS.filter((c) => req.ctx.can('price.view') || c[1] !== 'التكلفة (ر.س)')));
   }));
+  // تصدير Excel فعلي (xlsx) لسجل التزويد، من اليمين لليسار
+  api.get('/reports/fuelings.xlsx', ...C, requireCap('fueling.view'), h(async (req, res) => {
+    const { default: ExcelJS } = await import('exceljs');
+    const rows = rep.fuelingRows(req.ctx, { ...req.query, limit: 5000 });
+    const cols = rep.FUELING_CSV_COLS.filter((c) => req.ctx.can('price.view') || c[1] !== 'التكلفة (ر.س)');
+    const wb = new ExcelJS.Workbook(); wb.creator = 'فيول آب';
+    const ws = wb.addWorksheet('سجل التزويد', { views: [{ rightToLeft: true, state: 'frozen', ySplit: 1 }] });
+    ws.columns = cols.map((c) => ({ header: c[1], width: Math.max(12, c[1].length + 4) }));
+    for (const r of rows) ws.addRow(cols.map((c) => (typeof c[0] === 'function' ? c[0](r) : r[c[0]])));
+    ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000098' } };
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } };
+    audit(req.ctx, 'export.fuelings.xlsx', 'report', null, { rows: rows.length });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="fuelapp-fuelings.xlsx"');
+    res.end(Buffer.from(await wb.xlsx.writeBuffer()));
+  }));
+  // مستند أرامكو تجريبي لتجربة الرفع (معلّم بأنه نموذج غير رسمي)
+  api.get('/demo/sample-aramco.pdf', requireAuth, h((req, res) => {
+    const liters = Math.min(Number(req.query.liters) || 20000, 100000);
+    const no = 'SA-DEMO-' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '-' + String(Math.floor(Math.random() * 9000) + 1000);
+    const lp = q.get('SELECT * FROM loading_points WHERE id = ?', req.query.lp || 'lp_ryd');
+    const d = (o) => new Date(Date.now() + o * 864e5 + 3 * 3600e3).toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${no}.pdf"`);
+    res.send(sampleAramcoPdf({ docNumber: no, lpCode: lp.code, lpName: lp.city === 'الرياض' ? 'Riyadh Distribution Plant' : lp.code + ' Plant', liters, issue: d(0), valid: d(30) }));
+  }));
   api.get('/audit', ...C, requireCap('org.manage'), h((req) => q.all('SELECT a.*, u.name user_name FROM audit_log a LEFT JOIN users u ON u.id = a.user_id WHERE a.company_id = ? ORDER BY a.id DESC LIMIT 200', req.ctx.companyId)));
+
+  /* ---------------- العقود والباقات وحجز السعة ---------------- */
+  const CK = [requireAuth, (req, _r, n) => (['client', 'carrier'].includes(req.ctx.companyType) && req.ctx.role !== 'driver' ? n() : n(new HttpError(403, 'غير مصرح')))];
+  api.get('/contracts', ...CK, h((req) => ({ contracts: Con.listContracts(req.ctx), packages: Con.listPackages(req.ctx), reservations: Con.listReservations(req.ctx),
+    carriers: req.ctx.companyType === 'client' ? q.all("SELECT id, name_ar FROM companies WHERE type='carrier' AND status='approved' ORDER BY name_ar") : [] })));
+  api.post('/contracts', ...C, requireCap('order.create'), h((req) => Con.createContract(req.ctx, req.body)));
+  api.post('/packages', ...C, requireCap('order.create'), h((req) => Con.createPackage(req.ctx, req.body)));
+  api.post('/capacity', ...C, requireCap('order.create'), h((req) => Con.createReservation(req.ctx, req.body)));
+  api.get('/capacity/check', ...C, requireCap('order.create'), h((req) => Con.carrierCapacity(req.query.carrier_id, req.query.product || 'diesel', req.query.period_start, req.query.period_end)));
+  api.post('/carrier/:kind(contract|package|capacity)/:id/:decision(accept|reject)', requireAuth, requireCap('carrier.dispatch'),
+    h((req) => Con.carrierDecide(req.ctx, req.params.kind, req.params.id, { decision: req.params.decision, reason: req.body.reason })));
 
   /* ---------------- الناقل ---------------- */
   const K = [requireAuth, (req, _r, n) => (req.ctx.companyType === 'carrier' && req.ctx.role !== 'driver' ? n() : n(new HttpError(403, 'هذه الشاشة للناقلين')))];
@@ -391,7 +431,7 @@ export function createApp() {
   /* ---------------- واجهة الويب ---------------- */
   const dist = path.join(ROOT, 'web', 'dist');
   if (fs.existsSync(dist)) {
-    app.use(express.static(dist, { index: false, maxAge: '1h' }));
+    app.use(express.static(dist, { index: false, maxAge: '1h', redirect: false }));
     app.get('*', (_req, res) => res.sendFile(path.join(dist, 'index.html')));
   }
   return app;

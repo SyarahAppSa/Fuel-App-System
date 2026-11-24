@@ -26,7 +26,7 @@ export function fuelingRows(ctx, f = {}) {
   const showCost = ctx.can('price.view') || ctx.can('finance.view') || ctx.role === 'client_admin';
   return q.all(`SELECT f.*, a.code asset_code, a.name asset_name, a.category, a.plate_or_serial, u.name operator_name,
       p.name project_name, p.code project_code, s.name site_name, cc.code cost_center_code, cc.name cost_center_name,
-      tg.display_no tag_display_no, tk.code tank_code, t.number trip_number, o.number order_number, ad.doc_number,
+      tg.display_no tag_display_no, tk.code tank_code, tk.name tank_name, t.number trip_number, t.id trip_ref_id, o.number order_number, o.id order_ref_id, ad.doc_number,
       (SELECT number FROM fuelings x WHERE x.id = f.corrects_fueling_id) corrects_number
     FROM fuelings f JOIN assets a ON a.id = f.asset_id JOIN users u ON u.id = f.operator_user_id
     LEFT JOIN projects p ON p.id = f.project_id LEFT JOIN sites s ON s.id = f.site_id LEFT JOIN cost_centers cc ON cc.id = f.cost_center_id
@@ -34,16 +34,30 @@ export function fuelingRows(ctx, f = {}) {
     LEFT JOIN trips t ON t.id = COALESCE(f.trip_id, (SELECT ts.trip_id FROM fuel_movements m JOIN fuel_batches b ON b.id = m.batch_id JOIN trip_stops ts ON ts.id = b.trip_stop_id WHERE m.id = f.movement_id))
     LEFT JOIN orders o ON o.id = t.order_id LEFT JOIN aramco_documents ad ON ad.id = o.aramco_document_id
     WHERE ${where.join(' AND ')} ORDER BY f.created_at DESC LIMIT ${Math.min(Number(f.limit) || 500, 5000)}`, ...p)
-    .map((r) => (showCost ? r : { ...r, cost_halalas: undefined }));
+    .map((r) => {
+      // للصرف من خزان: مرجع آخر رحلة استلام دخلت الخزان قبل العملية (المصدر بالمتوسط المرجح)
+      if (r.source_type === 'tank' && r.tank_id) {
+        const c = tankReceiptsBefore(r.tank_id, r.created_at).find((x) => x.trip_id);
+        if (c) Object.assign(r, { trip_number: c.trip_number, trip_ref_id: c.trip_id, order_number: c.order_number, order_ref_id: c.order_id, doc_number: c.doc_number, source_via_tank: 1 });
+      }
+      return showCost ? r : { ...r, cost_halalas: undefined };
+    });
 }
 
 /** مصدر لترات عملية صرف من خزان: آخر استلامات الخزان (تتبع على مستوى المتوسط المرجح) */
 function tankReceiptsBefore(tankId, at) {
-  return q.all(`SELECT m.quantity_ml, m.effective_at, m.kind, t.number trip_number, o.number order_number, ad.doc_number, ca.name_ar carrier_name
+  return q.all(`SELECT m.quantity_ml, m.effective_at, m.kind, t.id trip_id, t.number trip_number, o.id order_id, o.number order_number, o.created_at order_created_at,
+      (SELECT name FROM users WHERE id = o.created_by) order_created_by, ad.doc_number, ca.name_ar carrier_name
       FROM fuel_movements m LEFT JOIN trip_stops ts ON ts.id = m.ref_id AND m.ref_type='trip_stop' LEFT JOIN trips t ON t.id = ts.trip_id
       LEFT JOIN orders o ON o.id = t.order_id LEFT JOIN aramco_documents ad ON ad.id = o.aramco_document_id LEFT JOIN companies ca ON ca.id = t.carrier_id
       WHERE m.tank_id = ? AND m.status='approved' AND m.quantity_ml > 0 AND m.kind IN ('receipt','opening','transfer_in') AND m.effective_at <= ?
       ORDER BY m.effective_at DESC LIMIT 3`, tankId, at);
+}
+
+/** سلسلة مصدر عملية تزويد: الخزان ← رحلات الاستلام ← الطلب الأصلي ← المستند، أو الدفعة المباشرة ← الرحلة ← الطلب */
+export function sourceChain(r) {
+  if (r.source_type === 'batch') return [{ kind: 'direct', trip_id: r.trip_ref_id, trip_number: r.trip_number, order_id: r.order_ref_id, order_number: r.order_number, doc_number: r.doc_number }];
+  return tankReceiptsBefore(r.tank_id, r.created_at);
 }
 
 /* ------------------------------------------------------------------ */
@@ -71,12 +85,7 @@ export function assetReport(ctx, assetId, f = {}) {
     rate = a.meter_type === 'km' ? { value: +(fuelBetween / dist * 100).toFixed(2), unit: 'لتر/100 كم', readings: valid.length, span: dist }
          : { value: +(fuelBetween / dist).toFixed(2), unit: 'لتر/ساعة', readings: valid.length, span: dist };
   }
-  const enriched = rows.map((r) => ({
-    ...r,
-    source_chain: r.source_type === 'batch'
-      ? [{ kind: 'direct', trip_number: r.trip_number, order_number: r.order_number, doc_number: r.doc_number }]
-      : tankReceiptsBefore(r.tank_id, r.created_at),
-  }));
+  const enriched = rows.map((r) => ({ ...r, source_chain: sourceChain(r) }));
   const moves = q.all(`SELECT aa.*, p.name project_name, u.name by_name FROM asset_assignments aa LEFT JOIN projects p ON p.id = aa.project_id
       LEFT JOIN users u ON u.id = aa.created_by WHERE asset_id = ? ORDER BY effective_from`, assetId);
   const tagHistory = q.all(`SELECT e.*, t.display_no, u.name by_name FROM nfc_tag_events e LEFT JOIN nfc_tags t ON t.id = e.tag_id
@@ -248,11 +257,11 @@ export function toCsv(rows, cols) {
 
 export const FUELING_CSV_COLS = [
   ['number', 'رقم العملية'], [(r) => RT(r.created_at), 'الوقت (الرياض)'], ['site_name', 'الموقع'], ['project_name', 'المشروع'], ['asset_code', 'رقم الأصل'],
-  ['asset_name', 'الأصل'], ['tag_display_no', 'الشريحة'], ['verification', 'طريقة التحقق'], [(r) => PRODUCTS[r.product], 'نوع الوقود'],
+  ['asset_name', 'الأصل'], ['tag_display_no', 'الشريحة'], [(r) => ({ nfc: 'NFC', qr: 'QR بديل', manual: 'يدوي' }[r.verification]), 'طريقة التحقق'], [(r) => PRODUCTS[r.product], 'نوع الوقود'],
   [(r) => L(r.quantity_ml), 'اللترات'], [(r) => (r.cost_halalas == null ? 'غير متوفرة' : r.cost_halalas / 100), 'التكلفة (ر.س)'],
-  ['meter_value', 'قراءة العداد'], ['meter_unit', 'وحدة العداد'], ['measure_source', 'مصدر القياس'], ['operator_name', 'المشغّل'],
-  [(r) => (r.source_type === 'tank' ? 'خزان ' + (r.tank_code || '') : 'تزويد مباشر'), 'المصدر'], ['trip_number', 'الرحلة'], ['order_number', 'الطلب'],
-  ['doc_number', 'مستند أرامكو'], ['cost_center_code', 'مركز التكلفة'], ['status', 'الحالة'], ['exception_flag', 'استثناء'], ['corrects_number', 'يصحح العملية'],
+  ['meter_value', 'قراءة العداد'], ['meter_unit', 'وحدة العداد'], [(r) => ({ manual: 'يدوي', pump_meter: 'عداد المضخة', tank_dip: 'قياس الخزان', correction: 'تصحيح' }[r.measure_source] || r.measure_source), 'مصدر القياس'], ['operator_name', 'المشغّل'],
+  [(r) => (r.source_type === 'tank' ? 'خزان ' + (r.tank_code || '') : 'تزويد مباشر'), 'المصدر'], ['trip_number', 'رحلة المصدر'], ['order_number', 'طلب النقل'],
+  ['doc_number', 'مستند أرامكو'], ['cost_center_code', 'مركز التكلفة'], [(r) => ({ approved: 'معتمدة', rejected: 'مرفوضة', draft: 'مسودة' }[r.status] || r.status), 'الحالة'], ['exception_flag', 'استثناء'], ['corrects_number', 'يصحح العملية'],
 ];
 
 export { documentQuantities };

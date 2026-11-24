@@ -6,6 +6,7 @@ import { Title, useMe, can } from '../ctx.jsx';
 
 export function Projects() {
   const me = useMe();
+  const lk = useApi('/lookups').data;
   const org = useApi('/org');
   const dash = useApi('/dashboard');
   const trips = useApi('/trips?status=awaiting_acceptance,awaiting_assignment,assigned,to_loading,at_loading,loaded,to_delivery,at_site');
@@ -17,7 +18,7 @@ export function Projects() {
   return (
     <>
       <Title sub="الرحلات القادمة والخزانات والمعدات والميزانية لكل مشروع">المشاريع والمواقع</Title>
-      {can(me, 'org.manage') && <div className="filters"><div className="grow" /><button className="btn" onClick={() => setModal('site')}><Plus size={15} /> موقع</button><button className="btn primary" onClick={() => setModal('project')}><Plus size={15} /> مشروع</button></div>}
+      {can(me, 'org.manage') && <div className="filters"><div className="grow" /><button className="btn" onClick={() => setModal('tank')}><Plus size={15} /> خزان</button><button className="btn" onClick={() => setModal('site')}><Plus size={15} /> موقع</button><button className="btn primary" onClick={() => setModal('project')}><Plus size={15} /> مشروع</button></div>}
       <div className="stack">{projects.map((p) => {
         const used = dash.data?.by_project.find((x) => x.id === p.id);
         const pSites = sites.filter((s) => s.project_id === p.id);
@@ -43,8 +44,15 @@ export function Projects() {
         <Field label="مركز التكلفة"><select name="cost_center_id" className="input"><option value="">—</option>{cost_centers.map((c) => <option key={c.id} value={c.id}>{c.code} {c.name}</option>)}</select></Field>
         <Field label="الميزانية اللترية"><input name="budget_liters" type="number" className="input" /></Field><Field label="الميزانية المالية (ر.س)"><input name="budget_sar" type="number" className="input" /></Field>
         <button className="btn primary">حفظ</button></form></Modal>}
+      {modal === 'tank' && <Modal title="خزان جديد" onClose={() => setModal(null)}><form className="stack" onSubmit={post('/tanks')}>
+        <Field label="الموقع"><select name="site_id" className="input" required>{sites.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
+        <Field label="رمز الخزان"><input name="code" className="input" required placeholder="TNK-03" /></Field><Field label="الاسم"><input name="name" className="input" /></Field>
+        <Field label="المنتج"><select name="product" className="input"><option value="diesel">ديزل</option><option value="gasoline91">بنزين 91</option><option value="gasoline95">بنزين 95</option></select></Field>
+        <Field label="السعة (لتر)"><input name="capacity_liters" type="number" className="input" required defaultValue="30000" /></Field>
+        <Field label="حد إعادة الطلب (لتر)"><input name="reorder_liters" type="number" className="input" defaultValue="5000" /></Field>
+        <button className="btn primary">حفظ</button></form></Modal>}
       {modal === 'site' && <Modal title="موقع جديد" onClose={() => setModal(null)}><form className="stack" onSubmit={post('/sites')}>
-        <Field label="الاسم"><input name="name" className="input" required /></Field><Field label="المدينة"><input name="city" className="input" required defaultValue="الرياض" /></Field>
+        <Field label="الاسم"><input name="name" className="input" required /></Field><Field label="المدينة" hint="المدن التي يغطيها ناقلون معتمدون تظهر أولًا"><input name="city" className="input" required defaultValue="الرياض" list="cities" /><datalist id="cities">{(lk?.cities || []).map((c) => <option key={c} value={c} />)}</datalist></Field>
         <Field label="المشروع"><select name="project_id" className="input">{projects.map((p) => <option key={p.id} value={p.id}>{p.code}</option>)}</select></Field>
         <Field label="اسم المستلم"><input name="receiver_name" className="input" /></Field><Field label="جوال المستلم"><input name="receiver_phone" className="input" /></Field>
         <Field label="تعليمات الدخول"><input name="access_notes" className="input" /></Field><button className="btn primary">حفظ</button></form></Modal>}
