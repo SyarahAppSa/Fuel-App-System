@@ -25,7 +25,7 @@ export default function Login({ onDone }) {
   return (
     <div className="login">
       <div className="hero">
-        <div className="row"><img src="/favicon.svg" width="44" height="44" alt="" /><b style={{ fontSize: 24 }}>فيول آب</b></div>
+        <div className="row"><div style={{ background: "#fff", borderRadius: 20, padding: "10px 16px" }}><img src="/brand/logo-full.png" alt="فيول آب" style={{ height: 96, display: "block" }} /></div></div>
         <div>
           <h1>الوقود من مستند أرامكو<br />إلى آخر لتر في المعدة.</h1>
           <p>منصة سعودية تجمع سوق نقل الوقود للشركات وإدارة الوقود داخل مواقعها: احجز الناقل، تابع الصهريج، استلم في الخزان، ووزّع على المعدات بشرائح NFC — مع تتبع كامل لكل عملية ولكل لتر.</p>

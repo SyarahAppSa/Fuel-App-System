@@ -202,21 +202,21 @@ export function tripReportHtml(ctx, tripId, token) {
 <style>
 @page{size:A4;margin:14mm}
 body{font-family:'IBM Plex Sans Arabic',Tahoma,sans-serif;color:#1c1917;margin:0;padding:24px;font-size:12.5px;background:#fff}
-header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #c2410c;padding-bottom:12px;margin-bottom:16px}
-.brand{font-size:26px;font-weight:700;color:#c2410c}.brand small{display:block;font-size:12px;color:#57534e;font-weight:400}
+header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #000098;box-shadow:0 3px 0 #c00000;padding-bottom:12px;margin-bottom:16px}
+.brand{font-size:26px;font-weight:700;color:#000098}.brand small{display:block;font-size:12px;color:#57534e;font-weight:400}
 .demo{background:#fef3c7;color:#92400e;padding:4px 10px;border-radius:6px;font-weight:600;display:inline-block}
-h2{font-size:15px;margin:18px 0 8px;color:#7c2d12;border-right:4px solid #c2410c;padding-right:8px}
+h2{font-size:15px;margin:18px 0 8px;color:#000098;border-right:4px solid #000098;padding-right:8px}
 table{width:100%;border-collapse:collapse;margin-bottom:6px}td,th{border:1px solid #e7e5e4;padding:6px 8px;text-align:right;vertical-align:top}
 th{background:#fafaf9;width:22%;font-weight:600;color:#44403c}
 .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}figure{margin:0;border:1px solid #e7e5e4;border-radius:6px;padding:6px;text-align:center;break-inside:avoid}
 figure img{width:100%;height:120px;object-fit:cover;border-radius:4px;background:#f5f5f4}figcaption{font-weight:600;margin-top:4px}small{color:#78716c;font-weight:400}
 .warn{color:#b91c1c;font-weight:600}.ok{color:#15803d;font-weight:600}.missing{height:120px;display:flex;align-items:center;justify-content:center;background:#fef2f2;color:#b91c1c;border-radius:4px}
 footer{margin-top:20px;border-top:1px solid #e7e5e4;padding-top:8px;color:#78716c;font-size:11px;display:flex;justify-content:space-between}
-.print{position:fixed;left:16px;top:16px;background:#c2410c;color:#fff;border:0;padding:8px 16px;border-radius:6px;font-family:inherit;cursor:pointer}
+.print{position:fixed;left:16px;top:16px;background:#000098;color:#fff;border:0;padding:8px 16px;border-radius:6px;font-family:inherit;cursor:pointer}
 @media print{.print{display:none}}
 </style></head><body>
 <button class="print" onclick="print()">طباعة / حفظ PDF</button>
-<header><div class="brand">فيول آب<small>تقرير توثيق التعبئة والتسليم</small></div>
+<header><div class="brand" style="display:flex;gap:12px;align-items:center"><img src="/brand/logo-mark.png" style="height:58px"><div>فيول آب<small>تقرير توثيق التعبئة والتسليم</small></div></div>
 <div style="text-align:left"><div style="font-size:18px;font-weight:700">${esc(t.number)}</div><div>${esc(t.status_ar)}</div><span class="demo">بيانات تجريبية</span></div></header>
 <h2>الطلب والمستند</h2><table>
 <tr><th>رقم الطلب</th><td>${esc(t.order_number)}</td><th>رقم الرحلة</th><td>${esc(t.number)}</td></tr>

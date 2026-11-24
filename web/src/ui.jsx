@@ -33,7 +33,7 @@ export function Kpi({ label, value, unit, foot, onClick, icon: I, tone }) {
 }
 
 /** حلقة نسب: ألوان فئوية ثابتة الترتيب (مُتحقق منها)، فراغ 2px بين الشرائح، مع مفتاح يحمل القيم */
-export const SERIES = ['#6250d6', '#eb6834', '#1baf7a', '#2a78d6', '#eda100'];
+export const SERIES = ['#2a78d6', '#eb6834', '#1baf7a', '#6250d6', '#eda100'];
 export function Donut({ data, center, unit, size = 200 }) {
   const total = data.reduce((s, d) => s + d.value, 0) || 1;
   const r = 80, w = 26, C = 2 * Math.PI * r;

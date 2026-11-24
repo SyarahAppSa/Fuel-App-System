@@ -85,7 +85,7 @@ function Shell({ me, reloadMe }) {
     <Me.Provider value={me}>
       <div className="shell">
         <aside className={'side' + (open ? ' open' : '')}>
-          <div className="logo"><div><b>فيول آب</b><small>نقل وإدارة الوقود للشركات</small></div><img src="/favicon.svg" width="40" height="40" alt="" /></div>
+          <div className="logo"><div><b>فيول آب</b><small>نقل وإدارة الوقود للشركات</small></div><img src="/brand/logo-mark.png" className="brand-logo" alt="فيول آب" /></div>
           <div className="org"><div className="av">{initials}</div><div><b>{me.company.name}</b><small>{{ client: 'شركة عميلة', carrier: 'شركة نقل', platform: 'إدارة المنصة' }[me.company.type]}</small></div></div>
           <nav>
             {nav.map((it, i) => it.grp ? <div className="grp" key={i}>{it.grp}</div> : has(it.cap) && (

@@ -14,7 +14,7 @@ export default function Receipt({ token }) {
   const submit = async () => { try { await api('/public/receipt/' + token, { method: 'POST', body: v }); setDone(true); r.reload(); } catch (e) { fail(e); } };
   return (
     <div className="field-app" style={{ padding: 16 }}>
-      <div className="row mb"><img src="/favicon.svg" width="34" alt="" /><b style={{ fontSize: 20 }}>فيول آب</b><span className="grow" /><span className="demo-badge">بيانات تجريبية</span></div>
+      <div className="row mb"><img src="/brand/logo-mark.png" height="44" alt="" /><b style={{ fontSize: 20, color: "var(--brand-2)" }}>فيول آب</b><span className="grow" /><span className="demo-badge">بيانات تجريبية</span></div>
       <Card title={`تأكيد استلام — ${s.trip_number}`}>
         <dl className="kv"><dt>الموقع</dt><dd>{s.site_name}</dd><dt>الناقل</dt><dd>{s.carrier_name}</dd><dt>الصهريج / السائق</dt><dd>{s.plate} · {s.driver_name}</dd>
           <dt>المنتج</dt><dd>{s.product}</dd><dt>المطلوبة</dt><dd className="num">{liters(s.requested_ml)} لتر</dd><dt>المسلّمة حسب السائق</dt><dd className="num">{liters(s.delivered_ml)} لتر</dd><dt>حالة الرحلة</dt><dd>{s.trip_status_ar}</dd></dl>
