@@ -153,7 +153,7 @@ export function TripDetail({ id }) {
         <div className="stack">
           {t.price && (
             <Card title="السعر المتفق عليه">
-              <dl className="kv"><dt>أجرة النقل</dt><dd className="num">{sar(t.price.base_halalas)} ر.س</dd><dt>رسوم خدمة هجوم</dt><dd className="num">{sar(t.price.platform_fee_halalas)}</dd>
+              <dl className="kv"><dt>أجرة النقل</dt><dd className="num">{sar(t.price.base_halalas)} ر.س</dd><dt>رسوم خدمة فيول آب</dt><dd className="num">{sar(t.price.platform_fee_halalas)}</dd>
                 <dt>ض.ق.م</dt><dd className="num">{sar(t.price.vat_halalas)}</dd><dt>الإجمالي</dt><dd className="num" style={{ fontSize: 17 }}>{sar(t.price.total_halalas)} ر.س</dd>
                 <dt>الإلغاء</dt><dd className="small">{sar(t.price.terms.cancel_fee_halalas)} ر.س بعد القبول</dd><dt>الانتظار</dt><dd className="small">{sar(t.price.terms.waiting_fee_halalas_per_hour)}/ساعة بعد {t.price.terms.free_waiting_hours} س</dd>
                 {t.fuel_price_halalas_per_l != null && <><dt>سعر لتر الوقود</dt><dd className="num">{sar(t.fuel_price_halalas_per_l)}</dd></>}</dl>

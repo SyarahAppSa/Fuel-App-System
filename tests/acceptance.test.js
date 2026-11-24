@@ -6,9 +6,9 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hajoom-test-'));
-process.env.HAJOOM_DB = path.join(tmp, 'test.db');
-process.env.HAJOOM_UPLOADS = path.join(tmp, 'uploads');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fuelapp-test-'));
+process.env.FUELAPP_DB = path.join(tmp, 'test.db');
+process.env.FUELAPP_UPLOADS = path.join(tmp, 'uploads');
 const { openDb, q } = await import('../server/db.js');
 const { createApp } = await import('../server/app.js');
 const { seedDemo, DEMO_PASSWORD } = await import('../server/seed.js');
@@ -21,9 +21,9 @@ before(async () => {
   await seedDemo({ history: false });
   server = createApp().listen(0);
   base = `http://127.0.0.1:${server.address().port}/api`;
-  for (const [k, email] of Object.entries({ procure: 'procure1@hajoom.demo', admin: 'client1@hajoom.demo', sup: 'fuel1@hajoom.demo', disp: 'dispatch1@hajoom.demo',
-    driver1: 'driver1@hajoom.demo', driver2: 'driver2@hajoom.demo', receiver: 'receiver1@hajoom.demo', finance: 'finance1@hajoom.demo', pm: 'pm1@hajoom.demo',
-    other: 'client2@hajoom.demo', carrier2: 'carrier2@hajoom.demo', fuel2: 'fuel2@hajoom.demo' })) {
+  for (const [k, email] of Object.entries({ procure: 'procure1@fuelapp.demo', admin: 'client1@fuelapp.demo', sup: 'fuel1@fuelapp.demo', disp: 'dispatch1@fuelapp.demo',
+    driver1: 'driver1@fuelapp.demo', driver2: 'driver2@fuelapp.demo', receiver: 'receiver1@fuelapp.demo', finance: 'finance1@fuelapp.demo', pm: 'pm1@fuelapp.demo',
+    other: 'client2@fuelapp.demo', carrier2: 'carrier2@fuelapp.demo', fuel2: 'fuel2@fuelapp.demo' })) {
     const r = await call('POST', '/auth/login', { email, password: DEMO_PASSWORD });
     tokens[k] = r.body.token;
     // client1 also has a dispatcher membership; ensure we are on the client_admin one

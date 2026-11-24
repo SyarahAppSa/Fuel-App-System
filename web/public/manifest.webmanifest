@@ -1,1 +1,1 @@
-{ "name": "هجوم", "short_name": "هجوم", "dir": "rtl", "lang": "ar", "start_url": "/", "display": "standalone", "background_color": "#0f1f2e", "theme_color": "#0f1f2e", "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }] }
+{ "name": "فيول آب", "short_name": "فيول آب", "dir": "rtl", "lang": "ar", "start_url": "/", "display": "standalone", "background_color": "#4a2a8a", "theme_color": "#4a2a8a", "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }] }

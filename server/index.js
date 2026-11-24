@@ -9,4 +9,4 @@ if (!q.get('SELECT 1 FROM companies LIMIT 1')) {
   q.run('DELETE FROM sessions');
 }
 const port = Number(process.env.PORT || 3000);
-createApp().listen(port, () => console.log(`هجوم يعمل على http://localhost:${port}`));
+createApp().listen(port, () => console.log(`فيول آب يعمل على http://localhost:${port}`));

@@ -22,11 +22,35 @@ export function Alert({ tone = 'info', children }) {
 export function Kpi({ label, value, unit, foot, onClick, icon: I, tone }) {
   return (
     <div className="card kpi" onClick={onClick} role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined}>
-      {I && <I className="ico" size={26} />}
-      <div className="lbl">{label}</div>
-      <div className="val" style={tone ? { color: `var(--${tone})` } : null}><span className="num">{value}</span>{unit && <small>{unit}</small>}</div>
-      {foot && <div className="foot">{foot}</div>}
+      {I && <div className="ico" style={tone ? { background: `var(--${tone}-soft)`, color: `var(--${tone})` } : null}><I size={24} /></div>}
+      <div className="body">
+        <div className="lbl">{label}</div>
+        <div className="val" style={tone ? { color: `var(--${tone})` } : null}><span className="num">{value}</span>{unit && <small>{unit}</small>}</div>
+        {foot && <div className="foot">{foot}</div>}
+      </div>
     </div>
+  );
+}
+
+/** حلقة نسب: ألوان فئوية ثابتة الترتيب (مُتحقق منها)، فراغ 2px بين الشرائح، مع مفتاح يحمل القيم */
+export const SERIES = ['#6250d6', '#eb6834', '#1baf7a', '#2a78d6', '#eda100'];
+export function Donut({ data, center, unit, size = 200 }) {
+  const total = data.reduce((s, d) => s + d.value, 0) || 1;
+  const r = 80, w = 26, C = 2 * Math.PI * r;
+  let acc = 0;
+  return (
+    <svg viewBox="0 0 200 200" width={size} height={size} role="img" aria-label="توزيع النسب">
+      <circle cx="100" cy="100" r={r} fill="none" stroke="var(--brand-soft)" strokeWidth={w} />
+      {data.map((d, i) => {
+        const len = (d.value / total) * C; const gap = data.length > 1 ? 2 : 0;
+        const el = <circle key={d.key} cx="100" cy="100" r={r} fill="none" stroke={d.color || SERIES[i % SERIES.length]} strokeWidth={w}
+          strokeDasharray={`${Math.max(0, len - gap)} ${C}`} strokeDashoffset={-acc} transform="rotate(-90 100 100)" style={{ cursor: 'pointer' }}>
+          <title>{d.label}: {Math.round((d.value / total) * 100)}%</title></circle>;
+        acc += len; return el;
+      })}
+      <text x="100" y="96" textAnchor="middle" style={{ fontSize: 26, fontWeight: 800, fill: 'var(--ink)' }}>{center}</text>
+      <text x="100" y="120" textAnchor="middle" style={{ fontSize: 12, fill: 'var(--muted)' }}>{unit}</text>
+    </svg>
   );
 }
 

@@ -15,7 +15,7 @@ export default function Admin() {
   const soon = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
   return (
     <>
-      <Title sub="اعتماد الأطراف والوثائق ومتابعة السوق">إدارة هجوم</Title>
+      <Title sub="اعتماد الأطراف والوثائق ومتابعة السوق">إدارة فيول آب</Title>
       <div className="grid g4">
         <Kpi icon={Building2} label="الشركات" value={d.companies.length} foot={`${d.companies.filter((c) => c.status === 'pending').length} بانتظار الاعتماد`} />
         <Kpi icon={Wallet} label="قيمة النقل في السوق" value={sar(d.gmv_halalas)} unit="ر.س" />

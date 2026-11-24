@@ -29,7 +29,7 @@ export const ROLE_CAPS = {
 export const ROLE_LABELS = {
   client_admin: 'مدير حساب الشركة', procurement: 'المشتريات', project_manager: 'مدير المشروع',
   fuel_supervisor: 'مشرف الوقود', finance: 'المالية', site_receiver: 'مستلم الموقع',
-  carrier_admin: 'مدير الناقل', dispatcher: 'مسؤول الإسناد', driver: 'سائق', platform_admin: 'إدارة هجوم',
+  carrier_admin: 'مدير الناقل', dispatcher: 'مسؤول الإسناد', driver: 'سائق', platform_admin: 'إدارة فيول آب',
 };
 
 export function createSession(userId, membershipId) {

@@ -47,7 +47,7 @@ function tankReceiptsBefore(tankId, at) {
 }
 
 /* ------------------------------------------------------------------ */
-/* تقرير المعدة: معيار عرض هجوم                                          */
+/* تقرير المعدة: معيار عرض فيول آب                                          */
 /* ------------------------------------------------------------------ */
 export function assetReport(ctx, assetId, f = {}) {
   const a = q.get(`SELECT a.*, p.name project_name, p.code project_code, s.name site_name, cc.code cost_center_code, cc.name cost_center_name,
@@ -128,8 +128,25 @@ export function dashboard(ctx, f = {}) {
       WHERE f.company_id = ? AND f.status='approved' AND f.created_at BETWEEN ? AND ?` + (projectFilter ? ' AND f.project_id = ?' : '') + ' GROUP BY a.id ORDER BY ml DESC LIMIT 6',
     ...[c, from, to, projectFilter].filter((x) => x !== null));
   const showMoney = ctx.can('price.view') || ctx.can('finance.view');
+  const one = (sql, ...a) => q.get(sql, ...a).n;
+  const counts = {
+    projects: one('SELECT COUNT(*) n FROM projects WHERE company_id = ?' + (projectFilter ? ' AND id = ?' : ''), ...[c, projectFilter].filter(Boolean)),
+    sites: one('SELECT COUNT(*) n FROM sites WHERE company_id = ?' + (projectFilter ? ' AND project_id = ?' : ''), ...[c, projectFilter].filter(Boolean)),
+    assets: one("SELECT COUNT(*) n FROM assets WHERE company_id = ? AND status = 'active'" + (projectFilter ? ' AND project_id = ?' : ''), ...[c, projectFilter].filter(Boolean)),
+    active_tags: one("SELECT COUNT(*) n FROM nfc_tags t JOIN assets a ON a.id = t.asset_id WHERE t.company_id = ? AND t.status = 'active'" + (projectFilter ? ' AND a.project_id = ?' : ''), ...[c, projectFilter].filter(Boolean)),
+    users: one('SELECT COUNT(DISTINCT user_id) n FROM memberships WHERE company_id = ? AND active = 1', c),
+    active_trips: one(`SELECT COUNT(*) n FROM trips t JOIN orders o ON o.id = t.order_id WHERE t.company_id = ? AND t.status IN ('awaiting_acceptance','awaiting_assignment','assigned','to_loading','at_loading','loaded','to_delivery','at_site','on_hold')` + (projectFilter ? ' AND o.project_id = ?' : ''), ...[c, projectFilter].filter(Boolean)),
+  };
+  const month = q.get(`SELECT COALESCE(SUM(quantity_ml),0) s FROM fuelings WHERE company_id = ? AND status='approved' AND created_at >= ?` + (projectFilter ? ' AND project_id = ?' : ''),
+    ...[c, new Date(Date.now() - 30 * 864e5).toISOString(), projectFilter].filter(Boolean)).s;
+  const recent = [
+    ...q.all(`SELECT 'fueling' kind, f.id, f.number ref, f.created_at at, f.quantity_ml, a.code subject, u.name actor FROM fuelings f JOIN assets a ON a.id = f.asset_id JOIN users u ON u.id = f.operator_user_id
+        WHERE f.company_id = ? AND f.status = 'approved'` + (projectFilter ? ' AND f.project_id = ?' : '') + ' ORDER BY f.created_at DESC LIMIT 6', ...[c, projectFilter].filter(Boolean)),
+    ...q.all(`SELECT 'trip' kind, t.id, t.number ref, e.received_at at, e.to_status status, NULL quantity_ml, ca.name_ar subject, u.name actor FROM trip_events e JOIN trips t ON t.id = e.trip_id
+        JOIN companies ca ON ca.id = t.carrier_id LEFT JOIN users u ON u.id = e.actor_user_id WHERE t.company_id = ? AND e.to_status IS NOT NULL ORDER BY e.received_at DESC LIMIT 6`, c),
+  ].sort((x, y) => y.at.localeCompare(x.at)).slice(0, 8).map((r) => ({ ...r, status_ar: r.status ? TRIP_STATUS_AR[r.status] : undefined }));
   return {
-    generated_at: now(),
+    generated_at: now(), counts, month_issued_ml: month, recent,
     received_ml: received.s, received_count: received.n,
     issued_ml: issued.s, issued_count: issued.n,
     stock_ml: tanks.reduce((s, t) => s + t.book_ml, 0), direct_balance_ml: directBatches,
@@ -199,7 +216,7 @@ footer{margin-top:20px;border-top:1px solid #e7e5e4;padding-top:8px;color:#78716
 @media print{.print{display:none}}
 </style></head><body>
 <button class="print" onclick="print()">طباعة / حفظ PDF</button>
-<header><div class="brand">هجوم<small>تقرير توثيق التعبئة والتسليم</small></div>
+<header><div class="brand">فيول آب<small>تقرير توثيق التعبئة والتسليم</small></div>
 <div style="text-align:left"><div style="font-size:18px;font-weight:700">${esc(t.number)}</div><div>${esc(t.status_ar)}</div><span class="demo">بيانات تجريبية</span></div></header>
 <h2>الطلب والمستند</h2><table>
 <tr><th>رقم الطلب</th><td>${esc(t.order_number)}</td><th>رقم الرحلة</th><td>${esc(t.number)}</td></tr>
@@ -220,7 +237,7 @@ ${t.stops.map((s) => `<h2>نقطة التسليم ${s.seq}: ${esc(s.site_name)} 
 <div class="grid">${['before_unloading', 'after_unloading'].map((k) => { const p = t.photos.find((x) => x.kind === k && x.stop_id === s.id); return p ? img(p) : `<figure><div class="missing">لا توجد صورة</div><figcaption>${photoKinds[k]}</figcaption></figure>`; }).join('')}</div>`).join('')}
 <h2>السجل الزمني</h2><table><tr><th>الوقت</th><th>الحدث</th><th>المنفذ</th><th>ملاحظة</th></tr>
 ${t.events.map((e) => `<tr><td>${RT(e.captured_at)}</td><td>${esc(e.to_status ? TRIP_STATUS_AR[e.to_status] : e.type)}</td><td>${esc(e.actor_name || '—')}</td><td>${esc(e.note || '')}</td></tr>`).join('')}</table>
-<footer><span>أُنشئ في ${RT(now())} بتوقيت الرياض</span><span>هجوم — منصة نقل وإدارة الوقود</span></footer>
+<footer><span>أُنشئ في ${RT(now())} بتوقيت الرياض</span><span>فيول آب — منصة نقل وإدارة الوقود</span></footer>
 </body></html>`;
 }
 

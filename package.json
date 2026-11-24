@@ -1,8 +1,8 @@
 {
-  "name": "hajoom",
+  "name": "fuelapp",
   "version": "0.1.0",
   "private": true,
-  "description": "هجوم - منصة نقل وإدارة الوقود للشركات (المرحلة الأولى)",
+  "description": "فيول آب - منصة نقل وإدارة الوقود للشركات (المرحلة الأولى)",
   "type": "module",
   "engines": {
     "node": ">=22.13"

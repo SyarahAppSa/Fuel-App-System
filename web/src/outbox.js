@@ -2,7 +2,7 @@
 // كل عنصر يحمل معرف عملية (client_op_id) ثابتًا، فإعادة الإرسال لا تكرر الحركة على الخادم.
 import { auth } from './lib.js';
 
-const DB = 'hajoom-outbox', STORE = 'ops';
+const DB = 'fuelapp-outbox', STORE = 'ops';
 const subs = new Set();
 let cache = [];
 

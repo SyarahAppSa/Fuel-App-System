@@ -3,7 +3,7 @@ import { Me } from './ctx.jsx';
 import { createRoot } from 'react-dom/client';
 import {
   LayoutDashboard, FileText, Truck, MapPin, Tractor, Nfc, Fuel, Container, FileSignature, CheckSquare, BarChart3, Wallet, Settings as Cog,
-  Menu, Bell, LogOut, Users, Route, ShieldCheck, ClipboardCheck,
+  Menu, Bell, LogOut, Users, Route, ShieldCheck, ClipboardCheck, Crown, Headset, UserCog,
 } from 'lucide-react';
 import './styles.css';
 import { api, auth, usePath, navigate, match, useApi, ago } from './lib.js';
@@ -52,7 +52,7 @@ const CARRIER_NAV = [
 ];
 const DRIVER_NAV = [{ grp: 'السائق' }, { to: '/', label: 'رحلاتي', icon: Truck }];
 const RECEIVER_NAV = [{ grp: 'مستلم الموقع' }, { to: '/', label: 'رحلات موقعي', icon: ClipboardCheck }];
-const ADMIN_NAV = [{ grp: 'إدارة هجوم' }, { to: '/', label: 'المنصة', icon: ShieldCheck }, { to: '/trips', label: 'كل الرحلات', icon: Route }];
+const ADMIN_NAV = [{ grp: 'إدارة فيول آب' }, { to: '/', label: 'المنصة', icon: ShieldCheck }, { to: '/trips', label: 'كل الرحلات', icon: Route }];
 
 function routes(me) {
   const t = me.company.type, role = me.role;
@@ -80,49 +80,55 @@ function Shell({ me, reloadMe }) {
   const switchTo = async (id) => { const r = await api('/auth/switch', { method: 'POST', body: { membership_id: id } }); auth.token = r.token; navigate('/'); reloadMe(); };
   const logout = async () => { try { await api('/auth/logout', { method: 'POST' }); } catch {} auth.token = null; location.href = '/'; };
   useEffect(() => setOpen(false), [path]);
+  const initials = (me.company.name.replace(/[()]/g, '').split(/\s+/).find((w) => !['شركة', 'مصنع', 'مؤسسة'].includes(w)) || 'ه').replace(/^ال/, '')[0];
   return (
     <Me.Provider value={me}>
       <div className="shell">
         <aside className={'side' + (open ? ' open' : '')}>
-          <div className="logo"><img src="/favicon.svg" width="34" height="34" alt="" /><div><b>هجوم</b><small>نقل وإدارة الوقود للشركات</small></div></div>
+          <div className="logo"><div><b>فيول آب</b><small>نقل وإدارة الوقود للشركات</small></div><img src="/favicon.svg" width="40" height="40" alt="" /></div>
+          <div className="org"><div className="av">{initials}</div><div><b>{me.company.name}</b><small>{{ client: 'شركة عميلة', carrier: 'شركة نقل', platform: 'إدارة المنصة' }[me.company.type]}</small></div></div>
           <nav>
             {nav.map((it, i) => it.grp ? <div className="grp" key={i}>{it.grp}</div> : has(it.cap) && (
               <a key={it.to} href={it.to} className={'item' + ((it.to === '/' ? path === '/' : path.startsWith(it.to.replace('/new', ''))) ? ' on' : '') + (it.soon ? ' soon' : '')}
                 onClick={(e) => { e.preventDefault(); navigate(it.to); }}>
-                <it.icon size={17} />{it.label}{it.soon && <span className="tag">نسخة الشركات</span>}
+                <it.icon size={19} />{it.label}{it.soon && <span className="tag">نسخة الشركات</span>}
               </a>
             ))}
           </nav>
+          <div className="foot">
+            {me.company.type === 'client' && <button className="pill" onClick={() => navigate('/contracts')}><Crown size={17} /> الباقة والاشتراك</button>}
+            <a className="pill" href="mailto:support@fuelapp.demo"><Headset size={17} /> الدعم والمساعدة</a>
+          </div>
           <div className="me">
-            <div style={{ color: '#fff', fontWeight: 600 }}>{me.user.name}</div>
-            <div>{me.role_ar} · {me.company.name}</div>
+            <div style={{ color: 'var(--ink)', fontWeight: 600 }}>{me.user.name}</div>
+            <div>{me.role_ar}</div>
             {me.memberships.length > 1 && (
               <select value={me.current_membership} onChange={(e) => switchTo(e.target.value)} aria-label="تبديل الشركة">
                 {me.memberships.map((m) => <option key={m.id} value={m.id}>{m.company_name} — {m.role_ar}</option>)}
               </select>
             )}
-            <button className="btn sm ghost" style={{ color: '#c9d4de', marginTop: 8, paddingInline: 0 }} onClick={logout}><LogOut size={14} /> تسجيل الخروج</button>
           </div>
         </aside>
         <div className="main">
+          <div className="rolebar"><UserCog size={18} /><span className="grow">أنت تستخدم حساب {me.role_ar} في {me.company.name}</span><span className="demo-badge" style={{ background: 'rgba(255,255,255,.16)', color: '#fff', borderColor: 'rgba(255,255,255,.25)' }}>بيانات تجريبية</span><button onClick={logout}>خروج</button></div>
           <div className="top">
-            <button className="btn ghost sm menu-btn" onClick={() => setOpen(!open)} aria-label="القائمة"><Menu size={20} /></button>
+            <button className="circle-btn menu-btn" onClick={() => setOpen(!open)} aria-label="القائمة"><Menu size={20} /></button>
             <div id="page-title" className="grow" />
-            <span className="demo-badge">بيانات تجريبية</span>
             <div style={{ position: 'relative' }}>
-              <button className="btn ghost sm" onClick={() => { setBell(!bell); if (!bell && me.unread) api('/notifications/read', { method: 'POST' }).then(reloadMe); }} aria-label="الإشعارات">
-                <Bell size={19} />{me.unread > 0 && <span className="chip brand" style={{ padding: '0 6px' }}>{me.unread}</span>}
+              <button className="circle-btn" onClick={() => { setBell(!bell); if (!bell && me.unread) api('/notifications/read', { method: 'POST' }).then(reloadMe); }} aria-label="الإشعارات">
+                <Bell size={19} />{me.unread > 0 && <span className="badge">{me.unread}</span>}
               </button>
               {bell && (
-                <div className="card" style={{ position: 'absolute', insetInlineEnd: 0, top: 40, width: 340, maxHeight: 420, overflowY: 'auto', zIndex: 30 }}>
+                <div className="card" style={{ position: 'absolute', insetInlineEnd: 0, top: 52, width: 340, maxHeight: 420, overflowY: 'auto', zIndex: 30 }}>
                   {(notes.data || []).length === 0 ? <div className="empty">لا توجد إشعارات</div> : notes.data.map((x) => (
-                    <a key={x.id} href={x.link} onClick={(e) => { e.preventDefault(); setBell(false); navigate(x.link.replace('/carrier', '')); }} style={{ display: 'block', padding: '10px 14px', borderBottom: '1px solid var(--line)' }}>
+                    <a key={x.id} href={x.link} onClick={(e) => { e.preventDefault(); setBell(false); navigate(x.link.replace('/carrier', '')); }} style={{ display: 'block', padding: '12px 16px', borderBottom: '1px solid var(--line)' }}>
                       <div style={{ fontWeight: 600, fontSize: 13 }}>{x.title}</div><div className="small muted">{x.body} · {ago(x.created_at)}</div>
                     </a>
                   ))}
                 </div>
               )}
             </div>
+            <div className="who"><span className="nm">{me.user.name}</span><span className="av">{me.user.name.replace(/^م\.\s*/, '')[0]}</span></div>
           </div>
           <div className="content"><Page {...params} key={path.split('?')[0]} /></div>
         </div>

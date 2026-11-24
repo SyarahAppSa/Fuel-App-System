@@ -52,7 +52,7 @@ function ImportModal({ onClose, onDone }) {
   return (
     <Modal title="استيراد الأصول من Excel/CSV" onClose={onClose} wide footer={res && <><button className="btn primary" disabled={!res.valid} onClick={commit}>استيراد {res.valid} صف صالح</button>{res.errors.length > 0 && <button className="btn" onClick={errCsv}><Download size={15} /> تقرير الأخطاء</button>}</>}>
       <div className="row mb">
-        <a className="btn sm" href={URL.createObjectURL(new Blob(['﻿' + TEMPLATE], { type: 'text/csv' }))} download="hajoom-assets-template.csv"><Download size={14} /> النموذج الجاهز</a>
+        <a className="btn sm" href={URL.createObjectURL(new Blob(['﻿' + TEMPLATE], { type: 'text/csv' }))} download="fuelapp-assets-template.csv"><Download size={14} /> النموذج الجاهز</a>
         <label className="btn sm primary"><Upload size={14} /> اختر ملف CSV<input type="file" accept=".csv,text/csv" hidden onChange={async (e) => { const f = e.target.files[0]; if (f) preview(parseCsv(await f.text())); }} /></label>
         <span className="small muted">احفظ ملف Excel بصيغة CSV UTF-8. صحح الأخطاء وأعد رفع الصفوف المرفوضة فقط.</span>
       </div>

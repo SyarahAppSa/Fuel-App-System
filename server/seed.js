@@ -10,7 +10,7 @@ import * as fuel from './services/fueling.js';
 import * as docs from './services/documents.js';
 import { sampleAramcoPdf, makePng, PHOTO_COLORS } from './samples.js';
 
-export const DEMO_PASSWORD = 'Hajoom@2026';
+export const DEMO_PASSWORD = 'FuelApp@2026';
 
 export async function seedDemo({ history = true } = {}) {
   const pw = hashPassword(DEMO_PASSWORD);
@@ -21,8 +21,8 @@ export async function seedDemo({ history = true } = {}) {
   const member = (userId, companyId, role, extra = {}) => { const id = uid('mem_'); q.run('INSERT INTO memberships(id,user_id,company_id,role,scope_project_id,scope_site_id) VALUES (?,?,?,?,?,?)', id, userId, companyId, role, extra.project || null, extra.site || null); return id; };
 
   // ---- المنصة ----
-  company('co_hajoom', 'platform', 'هجوم', 'Hajoom', 'الرياض', 'approved', { commission_pct: 3 });
-  member(user('admin@hajoom.demo', 'إدارة هجوم'), 'co_hajoom', 'platform_admin');
+  company('co_fuelapp', 'platform', 'فيول آب', 'Fuel App', 'الرياض', 'approved', { commission_pct: 3 });
+  member(user('admin@fuelapp.demo', 'إدارة فيول آب'), 'co_fuelapp', 'platform_admin');
 
   // ---- نقاط التحميل (أسماء تجريبية) ----
   const LP = [['lp_ryd', 'RBP', 'محطة توزيع الرياض', 'الرياض', 24.58, 46.84], ['lp_dmm', 'DBP', 'محطة توزيع الدمام', 'الدمام', 26.39, 50.10],
@@ -31,10 +31,10 @@ export async function seedDemo({ history = true } = {}) {
 
   // ---- الناقل الأول ----
   company('co_car1', 'carrier', 'ناقلات الوسطى (تجريبي)', 'Central Tankers (Demo)', 'الرياض');
-  const car1Admin = user('carrier1@hajoom.demo', 'سلطان العتيبي', '0551000001'); member(car1Admin, 'co_car1', 'carrier_admin');
-  const car1Disp = user('dispatch1@hajoom.demo', 'نواف الشمري', '0551000002'); member(car1Disp, 'co_car1', 'dispatcher');
-  const d1u = user('driver1@hajoom.demo', 'محمد القحطاني', '0552000001'); member(d1u, 'co_car1', 'driver');
-  const d2u = user('driver2@hajoom.demo', 'عبدالله الدوسري', '0552000002'); member(d2u, 'co_car1', 'driver');
+  const car1Admin = user('carrier1@fuelapp.demo', 'سلطان العتيبي', '0551000001'); member(car1Admin, 'co_car1', 'carrier_admin');
+  const car1Disp = user('dispatch1@fuelapp.demo', 'نواف الشمري', '0551000002'); member(car1Disp, 'co_car1', 'dispatcher');
+  const d1u = user('driver1@fuelapp.demo', 'محمد القحطاني', '0552000001'); member(d1u, 'co_car1', 'driver');
+  const d2u = user('driver2@fuelapp.demo', 'عبدالله الدوسري', '0552000002'); member(d2u, 'co_car1', 'driver');
   q.run("INSERT INTO drivers(id,company_id,user_id,name,phone,license_no,license_expiry) VALUES ('drv_1','co_car1',?,?,?,?,?)", d1u, 'محمد القحطاني', '0552000001', 'L-883201', '2028-03-01');
   q.run("INSERT INTO drivers(id,company_id,user_id,name,phone,license_no,license_expiry) VALUES ('drv_2','co_car1',?,?,?,?,?)", d2u, 'عبدالله الدوسري', '0552000002', 'L-552910', '2027-08-15');
   q.run("INSERT INTO vehicles(id,company_id,plate,capacity_ml,products,docs_valid_until) VALUES ('veh_1','co_car1','أ ب ج 4512',?, 'diesel', '2027-12-31')", ML(36000));
@@ -51,8 +51,8 @@ export async function seedDemo({ history = true } = {}) {
 
   // ---- الناقل الثاني ----
   company('co_car2', 'carrier', 'أسطول الشرقية للنقل (تجريبي)', 'Eastern Fleet (Demo)', 'الدمام');
-  member(user('carrier2@hajoom.demo', 'فهد الحربي', '0553000001'), 'co_car2', 'carrier_admin');
-  const d3u = user('driver3@hajoom.demo', 'خالد الزهراني', '0554000001'); member(d3u, 'co_car2', 'driver');
+  member(user('carrier2@fuelapp.demo', 'فهد الحربي', '0553000001'), 'co_car2', 'carrier_admin');
+  const d3u = user('driver3@fuelapp.demo', 'خالد الزهراني', '0554000001'); member(d3u, 'co_car2', 'driver');
   q.run("INSERT INTO drivers(id,company_id,user_id,name,phone,license_no,license_expiry) VALUES ('drv_3','co_car2',?,?,?,?,?)", d3u, 'خالد الزهراني', '0554000001', 'L-120934', '2027-11-20');
   q.run("INSERT INTO vehicles(id,company_id,plate,capacity_ml,products,docs_valid_until) VALUES ('veh_4','co_car2','ك ل م 9031',?, 'diesel', '2027-10-31')", ML(36000));
   q.run("INSERT INTO vehicles(id,company_id,plate,capacity_ml,products,docs_valid_until) VALUES ('veh_5','co_car2','ن هـ و 1187',?, 'diesel', '2026-01-31')", ML(30000)); // وثائق منتهية
@@ -61,7 +61,7 @@ export async function seedDemo({ history = true } = {}) {
 
   // ---- ناقل بانتظار الاعتماد ----
   company('co_car3', 'carrier', 'مؤسسة الجنوب للنقليات (تجريبي)', 'South Haulage (Demo)', 'أبها', 'pending');
-  member(user('carrier3@hajoom.demo', 'سعيد القرني'), 'co_car3', 'carrier_admin');
+  member(user('carrier3@fuelapp.demo', 'سعيد القرني'), 'co_car3', 'carrier_admin');
   for (const [co, t, st, exp] of [['co_car1', 'cr', 'approved', '2027-05-01'], ['co_car1', 'transport_license', 'approved', '2027-02-01'], ['co_car1', 'insurance', 'approved', '2026-12-10'],
     ['co_car2', 'cr', 'approved', '2027-09-01'], ['co_car2', 'transport_license', 'approved', '2027-03-15'], ['co_car3', 'cr', 'pending', '2027-08-01'], ['co_car3', 'transport_license', 'pending', '2027-01-20']])
     q.run('INSERT INTO company_documents(id,company_id,doc_type,number,expires_at,status) VALUES (?,?,?,?,?,?)', uid('cd_'), co, t, String(Math.floor(1e6 + Math.random() * 9e6)), exp, st);
@@ -77,12 +77,12 @@ export async function seedDemo({ history = true } = {}) {
     ('sit_2','co_cli1','prj_2','موقع الملقا','الرياض',24.80,46.61,'تركي المطيري','0561000002','الدخول من شارع أنس بن مالك')`);
   q.run(`INSERT INTO tanks(id,company_id,site_id,code,name,product,capacity_ml,reorder_ml) VALUES
     ('tnk_1','co_cli1','sit_1','TNK-01','خزان الخرج الرئيسي','diesel',?,?), ('tnk_2','co_cli1','sit_2','TNK-02','خزان الملقا','diesel',?,?)`, ML(50000), ML(8000), ML(30000), ML(5000));
-  const cAdmin = user('client1@hajoom.demo', 'م. عبدالرحمن الراشد', '0560000001'); member(cAdmin, 'co_cli1', 'client_admin');
-  member(user('procure1@hajoom.demo', 'ريم السالم', '0560000002'), 'co_cli1', 'procurement');
-  member(user('pm1@hajoom.demo', 'م. يوسف العنزي', '0560000003'), 'co_cli1', 'project_manager', { project: 'prj_1' });
-  const sup = user('fuel1@hajoom.demo', 'أحمد الغامدي', '0560000004'); member(sup, 'co_cli1', 'fuel_supervisor');
-  member(user('finance1@hajoom.demo', 'نورة الحمدان', '0560000005'), 'co_cli1', 'finance');
-  member(user('receiver1@hajoom.demo', 'ماجد السبيعي', '0561000001'), 'co_cli1', 'site_receiver', { site: 'sit_1' });
+  const cAdmin = user('client1@fuelapp.demo', 'م. عبدالرحمن الراشد', '0560000001'); member(cAdmin, 'co_cli1', 'client_admin');
+  member(user('procure1@fuelapp.demo', 'ريم السالم', '0560000002'), 'co_cli1', 'procurement');
+  member(user('pm1@fuelapp.demo', 'م. يوسف العنزي', '0560000003'), 'co_cli1', 'project_manager', { project: 'prj_1' });
+  const sup = user('fuel1@fuelapp.demo', 'أحمد الغامدي', '0560000004'); member(sup, 'co_cli1', 'fuel_supervisor');
+  member(user('finance1@fuelapp.demo', 'نورة الحمدان', '0560000005'), 'co_cli1', 'finance');
+  member(user('receiver1@fuelapp.demo', 'ماجد السبيعي', '0561000001'), 'co_cli1', 'site_receiver', { site: 'sit_1' });
   member(cAdmin, 'co_car1', 'dispatcher'); // مثال: مستخدم واحد في أكثر من شركة بصلاحيات مستقلة
 
   const assets = [
@@ -109,8 +109,8 @@ export async function seedDemo({ history = true } = {}) {
   q.run("INSERT INTO sites(id,company_id,project_id,name,city,receiver_name,receiver_phone) VALUES ('sit_21','co_cli2','prj_21','المصنع - المدينة الصناعية الثانية','الدمام','بندر الخالدي','0571000001')");
   q.run(`INSERT INTO assets(id,company_id,code,name,category,fuel_type,plate_or_serial,project_id,site_id,cost_center_id,meter_type,per_tx_limit_ml,daily_limit_ml)
       VALUES ('ast_21','co_cli2','GEN-1000','مولد المصنع الاحتياطي','generator','diesel','SFW-1000','prj_21','sit_21','cc_21','hours',?,?)`, ML(2000), ML(4000));
-  member(user('client2@hajoom.demo', 'م. سارة البقمي', '0570000001'), 'co_cli2', 'client_admin');
-  member(user('fuel2@hajoom.demo', 'حسن الشهري', '0570000002'), 'co_cli2', 'fuel_supervisor');
+  member(user('client2@fuelapp.demo', 'م. سارة البقمي', '0570000001'), 'co_cli2', 'client_admin');
+  member(user('fuel2@fuelapp.demo', 'حسن الشهري', '0570000002'), 'co_cli2', 'fuel_supervisor');
   q.run("INSERT INTO nfc_tags(id,company_id,uid,display_no,status,asset_id) VALUES ('tag_21','co_cli2','04C2A1F0B9C201','NFC-00001','active','ast_21')");
 
   // ---- شرائح NFC للعميل الأول ----
@@ -118,8 +118,8 @@ export async function seedDemo({ history = true } = {}) {
     const m = q.get('SELECT m.id, m.user_id FROM memberships m JOIN users u ON u.id = m.user_id WHERE u.email = ?' + (membershipRole ? ' AND m.role = ?' : ''), ...[email, membershipRole].filter(Boolean));
     return loadContext(createSession(m.user_id, m.id));
   };
-  const admin = ctx('client1@hajoom.demo', 'client_admin');
-  const supervisor = ctx('fuel1@hajoom.demo');
+  const admin = ctx('client1@fuelapp.demo', 'client_admin');
+  const supervisor = ctx('fuel1@fuelapp.demo');
   fuel.issueTagBatch(admin, { batch_no: 'B-2026-11', uids: ['04A1B2C3D4E501', '04A1B2C3D4E502', '04A1B2C3D4E503', '04A1B2C3D4E504', '04A1B2C3D4E505', '04A1B2C3D4E506', '04A1B2C3D4E507', '04A1B2C3D4E508', '04A1B2C3D4E509', '04A1B2C3D4E510', '04A1B2C3D4E511', '04A1B2C3D4E512'] });
   ['ast_1', 'ast_2', 'ast_3', 'ast_4', 'ast_5', 'ast_6', 'ast_7', 'ast_8'].forEach((a, i) => fuel.bindTag(supervisor, { uid: `04A1B2C3D4E5${String(i + 1).padStart(2, '0')}`, asset_id: a, test_read_ok: true }));
   fuel.bindTag(supervisor, { uid: '04A1B2C3D4E509', asset_id: 'ast_9', test_read_ok: false }); // بانتظار التفعيل
@@ -129,16 +129,16 @@ export async function seedDemo({ history = true } = {}) {
 }
 
 async function seedHistory({ ctx, admin, supervisor }) {
-  const procure = ctx('procure1@hajoom.demo');
-  const dispatcher = ctx('dispatch1@hajoom.demo');
-  const driver1 = ctx('driver1@hajoom.demo');
-  const driver2 = ctx('driver2@hajoom.demo');
-  const receiver = ctx('receiver1@hajoom.demo');
-  const finance = ctx('finance1@hajoom.demo');
+  const procure = ctx('procure1@fuelapp.demo');
+  const dispatcher = ctx('dispatch1@fuelapp.demo');
+  const driver1 = ctx('driver1@fuelapp.demo');
+  const driver2 = ctx('driver2@fuelapp.demo');
+  const receiver = ctx('receiver1@fuelapp.demo');
+  const finance = ctx('finance1@fuelapp.demo');
   const day = (offset) => new Date(Date.now() + offset * 864e5 + 3 * 3600e3).toISOString().slice(0, 10);
 
   // رصيد افتتاحي لخزان الملقا
-  inv.openingBalance(admin, 'tnk_2', { liters: 12000, cost_per_liter: 1.66, note: 'رصيد افتتاحي عند بدء التشغيل على هجوم' });
+  inv.openingBalance(admin, 'tnk_2', { liters: 12000, cost_per_liter: 1.66, note: 'رصيد افتتاحي عند بدء التشغيل على فيول آب' });
 
   // مستند أرامكو نموذجي للخرج + اعتماد
   const pdf = sampleAramcoPdf({ docNumber: 'SA-FLA-2026-118734', lpCode: 'RBP', lpName: 'Riyadh Distribution Plant', liters: 60000, issue: day(-16), valid: day(30) });
@@ -269,7 +269,7 @@ function backdateFueling(id, at) {
 
 // تشغيل مباشر: npm run seed
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const file = process.env.HAJOOM_DB || path.join(ROOT, 'data', 'hajoom.db');
+  const file = process.env.FUELAPP_DB || path.join(ROOT, 'data', 'fuelapp.db');
   for (const f of [file, file + '-wal', file + '-shm']) fs.rmSync(f, { force: true });
   fs.rmSync(UPLOAD_DIR, { recursive: true, force: true });
   openDb(file);

@@ -6,11 +6,11 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, '..');
-export const UPLOAD_DIR = process.env.HAJOOM_UPLOADS || path.join(ROOT, 'uploads');
+export const UPLOAD_DIR = process.env.FUELAPP_UPLOADS || path.join(ROOT, 'uploads');
 
 let db;
 
-export function openDb(file = process.env.HAJOOM_DB || path.join(ROOT, 'data', 'hajoom.db')) {
+export function openDb(file = process.env.FUELAPP_DB || path.join(ROOT, 'data', 'fuelapp.db')) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
   db = new DatabaseSync(file);
@@ -52,7 +52,7 @@ export function tx(fn) {
 export const uid = (prefix = '') => prefix + crypto.randomUUID().replace(/-/g, '').slice(0, 20);
 export const now = () => new Date().toISOString();
 
-/** ترقيم مقروء: HJ-ORD-000123 */
+/** ترقيم مقروء: FA-ORD-000123 */
 export function nextNumber(name, prefix) {
   const row = q.get('INSERT INTO counters(name,value) VALUES(?,1) ON CONFLICT(name) DO UPDATE SET value=value+1 RETURNING value', name);
   return `${prefix}-${String(row.value).padStart(6, '0')}`;

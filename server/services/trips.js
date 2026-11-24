@@ -192,7 +192,7 @@ export function createOrder(ctx, body) {
     const { start, end } = planWindow(date, window_start, window_end);
     const quote = quotePrice(rp, totalMl);
     const orderId = uid('ord_');
-    const orderNo = nextNumber('order', 'HJ-ORD');
+    const orderNo = nextNumber('order', 'FA-ORD');
     q.run(`INSERT INTO orders(id,number,company_id,project_id,created_by,product,quantity_ml,loading_point_id,aramco_document_id,requested_date,
         window_start,window_end,carrier_id,route_price_id,price_snapshot_json,transport_halalas,fuel_price_halalas_per_l,status,idempotency_key,notes)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -202,7 +202,7 @@ export function createOrder(ctx, body) {
       'pending_carrier', idempotency_key || null, notes || null);
 
     const tripId = uid('trp_');
-    const tripNo = nextNumber('trip', 'HJ-TRP');
+    const tripNo = nextNumber('trip', 'FA-TRP');
     const deadline = new Date(Date.now() + rp.accept_within_minutes * 60000).toISOString();
     q.run(`INSERT INTO trips(id,number,order_id,company_id,carrier_id,status,planned_start,planned_end,window_start,window_end,accept_deadline)
         VALUES (?,?,?,?,?,'awaiting_acceptance',?,?,?,?,?)`, tripId, tripNo, orderId, ctx.companyId, rp.carrier_id, start, end, start, end, deadline);

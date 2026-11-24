@@ -230,7 +230,7 @@ export function createFueling(ctx, body) {
     const source = res.source || resolveSource(ctx, source_type, source_id);
     const qty = ML(body.quantity_liters);
     const id = uid('ful_');
-    const number = nextNumber('fueling', 'HJ-FUL');
+    const number = nextNumber('fueling', 'FA-FUL');
     const base = [id, number, ctx.companyId, asset.id, res.tag?.id ?? null, verification, source.type, source.type === 'tank' ? source.id : null,
       source.type === 'batch' ? source.id : null, source.trip_id ?? null, ctx.userId, qty, measure_source || 'manual',
       asset.meter_type === 'none' ? null : asset.meter_type, meter_value === '' || meter_value == null ? null : Number(meter_value),
@@ -283,7 +283,7 @@ export function correctFueling(ctx, fuelingId, { new_quantity_liters, reason }) 
     }
     const unit = f.cost_halalas == null ? null : f.cost_halalas / f.quantity_ml;
     const cost = unit == null ? null : Math.round(unit * delta);
-    const id = uid('ful_'); const number = nextNumber('fueling', 'HJ-FUL'); const mid = uid('mov_');
+    const id = uid('ful_'); const number = nextNumber('fueling', 'FA-FUL'); const mid = uid('mov_');
     q.run(`INSERT INTO fuel_movements(id,company_id,kind,tank_id,batch_id,quantity_ml,cost_halalas,ref_type,ref_id,note,created_by,approved_by)
         VALUES (?,?,'reversal',?,?,?,?,'fueling',?,?,?,?)`, mid, ctx.companyId, f.tank_id, f.batch_id, -delta, cost == null ? null : -cost, id, `تصحيح ${f.number}: ${reason}`, ctx.userId, ctx.userId);
     q.run(`INSERT INTO fuelings(id,number,company_id,asset_id,tag_id,verification,source_type,tank_id,batch_id,trip_id,operator_user_id,quantity_ml,measure_source,

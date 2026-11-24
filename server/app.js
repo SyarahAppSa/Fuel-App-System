@@ -289,7 +289,7 @@ export function createApp() {
   api.get('/reports/fuelings.csv', ...C, requireCap('fueling.view'), h((req, res) => {
     const rows = rep.fuelingRows(req.ctx, { ...req.query, limit: 5000 });
     audit(req.ctx, 'export.fuelings', 'report', null, { rows: rows.length, filters: req.query });
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8'); res.setHeader('Content-Disposition', 'attachment; filename="hajoom-fuelings.csv"');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8'); res.setHeader('Content-Disposition', 'attachment; filename="fuelapp-fuelings.csv"');
     res.send(rep.toCsv(rows, rep.FUELING_CSV_COLS.filter((c) => req.ctx.can('price.view') || c[1] !== 'التكلفة (ر.س)')));
   }));
   api.get('/audit', ...C, requireCap('org.manage'), h((req) => q.all('SELECT a.*, u.name user_name FROM audit_log a LEFT JOIN users u ON u.id = a.user_id WHERE a.company_id = ? ORDER BY a.id DESC LIMIT 200', req.ctx.companyId)));
@@ -353,7 +353,7 @@ export function createApp() {
     return trips.addPhoto(req.ctx, req.params.id, { ...req.body, file_id: f.id, lat: req.body.lat ? Number(req.body.lat) : null, lng: req.body.lng ? Number(req.body.lng) : null });
   }));
 
-  /* ---------------- إدارة هجوم ---------------- */
+  /* ---------------- إدارة فيول آب ---------------- */
   const A = [requireAuth, requireCap('platform.admin')];
   api.get('/admin/overview', ...A, h(() => ({
     companies: q.all(`SELECT c.*, (SELECT COUNT(*) FROM company_documents d WHERE d.company_id = c.id AND d.status='pending') pending_docs,
