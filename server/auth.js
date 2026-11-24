@@ -23,13 +23,16 @@ export const ROLE_CAPS = {
   carrier_admin:   ['carrier.dispatch','carrier.fleet','carrier.prices','price.view'],
   dispatcher:      ['carrier.dispatch','price.view'],
   driver:          ['driver.execute'],
-  platform_admin:  ['platform.admin'],
+  platform_admin:  ['platform.admin', 'platform.view', 'platform.finance', 'platform.export', 'platform.manage'],
+  platform_ops:    ['platform.view', 'platform.export', 'platform.manage'],
+  platform_reviewer: ['platform.view', 'platform.finance', 'platform.export'],
+  supplier_admin:  [],
 };
 
 export const ROLE_LABELS = {
   client_admin: 'مدير حساب الشركة', procurement: 'المشتريات', project_manager: 'مدير المشروع',
   fuel_supervisor: 'مشرف الوقود', finance: 'المالية', site_receiver: 'مستلم الموقع',
-  carrier_admin: 'مدير الناقل', dispatcher: 'مسؤول الإسناد', driver: 'سائق', platform_admin: 'إدارة فيول آب',
+  carrier_admin: 'مدير الناقل', dispatcher: 'مسؤول الإسناد', driver: 'سائق', platform_admin: 'إدارة فيول آب', platform_ops: 'العمليات (فيول آب)', platform_reviewer: 'المراجعة (فيول آب)', supplier_admin: 'مدير المورد',
 };
 
 export function createSession(userId, membershipId) {

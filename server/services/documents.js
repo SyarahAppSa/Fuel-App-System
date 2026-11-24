@@ -141,7 +141,7 @@ export function authorizeFile(ctx, fileId, action = 'view') {
   if (f.company_id === ctx.companyId && ctx.companyType === 'client') {
     ok = f.kind !== 'aramco_doc' || ctx.can('doc.view') || ctx.can('fueling.create');
   }
-  if (ctx.can('platform.admin')) ok = true;
+  if (ctx.can('platform.view')) ok = true;
   if (!ok && f.kind === 'aramco_doc') {
     // الناقل/السائق يرى المستند بعد قبول الرحلة فقط
     const t = q.get(`SELECT t.carrier_id, t.driver_id, t.status FROM trips t JOIN orders o ON o.id = t.order_id JOIN aramco_documents d ON d.id = o.aramco_document_id

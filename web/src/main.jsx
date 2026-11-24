@@ -3,7 +3,7 @@ import { Me } from './ctx.jsx';
 import { createRoot } from 'react-dom/client';
 import {
   LayoutDashboard, FileText, Truck, MapPin, Tractor, Nfc, Fuel, Container, FileSignature, CheckSquare, BarChart3, Wallet, Settings as Cog,
-  Menu, Bell, LogOut, Users, Route, ShieldCheck, ClipboardCheck, Crown, Headset, UserCog,
+  Building2, Menu, Bell, LogOut, Users, Route, ShieldCheck, ClipboardCheck, Crown, Headset, UserCog,
 } from 'lucide-react';
 import './styles.css';
 import { api, auth, usePath, navigate, match, useApi, ago, demoEnter, fail } from './lib.js';
@@ -22,6 +22,7 @@ import { Projects, Settings } from './pages/Settings.jsx';
 import { CarrierOverview, Fleet } from './pages/Carrier.jsx';
 import { DriverHome, DriverTrip } from './pages/Driver.jsx';
 import Admin from './pages/Admin.jsx';
+import { AdminHome, AdminRecords, AdminCompanies, AdminCompany, AdminSearch, AdminOrder, AdminReports, AdminAudit } from './pages/AdminOps.jsx';
 import Receipt from './pages/Receipt.jsx';
 import Soon from './pages/Soon.jsx';
 import Contracts from './pages/Contracts.jsx';
@@ -54,11 +55,14 @@ const CARRIER_NAV = [
 ];
 const DRIVER_NAV = [{ grp: 'السائق' }, { to: '/', label: 'رحلاتي', icon: Truck }];
 const RECEIVER_NAV = [{ grp: 'مستلم الموقع' }, { to: '/', label: 'رحلات موقعي', icon: ClipboardCheck }];
-const ADMIN_NAV = [{ grp: 'إدارة فيول آب' }, { to: '/', label: 'المنصة', icon: ShieldCheck }, { to: '/trips', label: 'كل الرحلات', icon: Route }];
+const ADMIN_NAV = [{ grp: 'إدارة فيول آب' }, { to: '/', label: 'مركز التشغيل', icon: LayoutDashboard }, { to: '/admin/search', label: 'الطلبات والرحلات', icon: Route },
+  { to: '/admin/companies', label: 'الشركات', icon: Building2 }, { to: '/admin/reports', label: 'التقارير', icon: BarChart3 },
+  { grp: 'الحوكمة' }, { to: '/admin/approvals', label: 'الاعتماد والوثائق', icon: ShieldCheck, cap: 'platform.admin' }, { to: '/admin/audit', label: 'سجل التدقيق', icon: ClipboardCheck }];
 
 function routes(me) {
   const t = me.company.type, role = me.role;
-  if (role === 'platform_admin') return [['/', Admin], ['/trips', TripList], ['/trips/:id', TripDetail]];
+  if (t === 'platform') return [['/', AdminHome], ['/admin/records', AdminRecords], ['/admin/companies', AdminCompanies], ['/admin/companies/:id', AdminCompany], ['/admin/search', AdminSearch],
+    ['/admin/orders/:id', AdminOrder], ['/admin/reports', AdminReports], ['/admin/audit', AdminAudit], ['/admin/approvals', Admin], ['/trips', TripList], ['/trips/:id', TripDetail]];
   if (role === 'driver') return [['/', DriverHome], ['/trips/:id', DriverTrip]];
   if (t === 'carrier') return [['/', CarrierOverview], ['/trips', TripList], ['/trips/:id', TripDetail], ['/fleet', Fleet], ['/contracts', Contracts]];
   if (role === 'site_receiver') return [['/', TripList], ['/trips', TripList], ['/trips/:id', TripDetail]];
@@ -76,7 +80,7 @@ function Shell({ me, reloadMe, openDemo }) {
   const [open, setOpen] = useState(false);
   const [bell, setBell] = useState(false);
   const notes = useApi(bell ? '/notifications' : null, [bell]);
-  const nav = me.role === 'platform_admin' ? ADMIN_NAV : me.role === 'driver' ? DRIVER_NAV : me.company.type === 'carrier' ? CARRIER_NAV : me.role === 'site_receiver' ? RECEIVER_NAV : CLIENT_NAV;
+  const nav = me.company.type === 'platform' ? ADMIN_NAV : me.role === 'driver' ? DRIVER_NAV : me.company.type === 'carrier' ? CARRIER_NAV : me.role === 'site_receiver' ? RECEIVER_NAV : CLIENT_NAV;
   const has = (cap) => !cap || (Array.isArray(cap) ? cap : [cap]).some((c) => me.caps.includes(c));
   let page = null, params = {};
   for (const [p, C] of routes(me)) { const m = match(p, path); if (m) { page = C; params = m; break; } }

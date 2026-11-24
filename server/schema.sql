@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS memberships (
   user_id TEXT NOT NULL REFERENCES users(id),
   company_id TEXT NOT NULL REFERENCES companies(id),
   role TEXT NOT NULL CHECK (role IN ('client_admin','procurement','project_manager','fuel_supervisor','finance',
-                                     'carrier_admin','dispatcher','driver','site_receiver','platform_admin')),
+                                     'carrier_admin','dispatcher','driver','site_receiver','platform_admin','platform_ops','platform_reviewer','supplier_admin')),
   scope_project_id TEXT,
   scope_site_id TEXT,
   approval_limit_halalas INTEGER,
@@ -583,4 +583,81 @@ CREATE TABLE IF NOT EXISTS capacity_allocations (
   project_id TEXT NOT NULL REFERENCES projects(id),
   trips INTEGER NOT NULL CHECK (trips >= 0),
   UNIQUE (reservation_id, project_id)
+);
+
+-- ========== مركز التشغيل: عروض الطلب لعدة ناقلين، الفوترة، المستحقات، المتابعة، التوريد ==========
+-- كل ناقل وصله الطلب له سطر واحد: الطلب يُحسب مرة في المنصة ومرة واحدة واردة لكل ناقل
+CREATE TABLE IF NOT EXISTS order_offers (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL REFERENCES orders(id),
+  carrier_id TEXT NOT NULL REFERENCES companies(id),
+  route_price_id TEXT,
+  quote_json TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','rejected','withdrawn','expired')),
+  deadline TEXT,
+  sent_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  responded_at TEXT,
+  responded_by TEXT,
+  reason TEXT,
+  UNIQUE (order_id, carrier_id)
+);
+CREATE INDEX IF NOT EXISTS ix_offers_carrier ON order_offers(carrier_id, status);
+
+-- فاتورة العميل لكل رحلة مسلّمة (الباقات مفوترة مسبقًا)
+CREATE TABLE IF NOT EXISTS invoices (
+  id TEXT PRIMARY KEY,
+  number TEXT NOT NULL UNIQUE,
+  client_id TEXT NOT NULL REFERENCES companies(id),
+  carrier_id TEXT NOT NULL REFERENCES companies(id),
+  order_id TEXT NOT NULL REFERENCES orders(id),
+  trip_id TEXT NOT NULL UNIQUE REFERENCES trips(id),
+  transport_halalas INTEGER NOT NULL,
+  platform_fee_halalas INTEGER NOT NULL,
+  vat_halalas INTEGER NOT NULL,
+  total_halalas INTEGER NOT NULL,
+  paid_halalas INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'issued' CHECK (status IN ('issued','partially_paid','paid','void')),
+  issued_at TEXT NOT NULL,
+  due_at TEXT,
+  paid_at TEXT
+);
+-- مستحق الناقل لكل رحلة مسلّمة
+CREATE TABLE IF NOT EXISTS carrier_settlements (
+  id TEXT PRIMARY KEY,
+  number TEXT NOT NULL UNIQUE,
+  carrier_id TEXT NOT NULL REFERENCES companies(id),
+  trip_id TEXT NOT NULL UNIQUE REFERENCES trips(id),
+  amount_halalas INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'due' CHECK (status IN ('due','paid')),
+  due_at TEXT NOT NULL,
+  paid_at TEXT, paid_by TEXT
+);
+-- متابعة تشغيلية يعيّنها الأدمن على طلب أو رحلة
+CREATE TABLE IF NOT EXISTS follow_ups (
+  id TEXT PRIMARY KEY,
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('order','trip','company','document')),
+  entity_id TEXT NOT NULL,
+  assignee_user_id TEXT REFERENCES users(id),
+  note TEXT,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','done')),
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  closed_at TEXT
+);
+-- عروض موردي الوقود (سوق التوريد مع النقل)
+CREATE TABLE IF NOT EXISTS supply_offers (
+  id TEXT PRIMARY KEY,
+  number TEXT NOT NULL UNIQUE,
+  supplier_id TEXT NOT NULL REFERENCES companies(id),
+  client_id TEXT NOT NULL REFERENCES companies(id),
+  order_id TEXT REFERENCES orders(id),
+  carrier_id TEXT REFERENCES companies(id),
+  product TEXT NOT NULL,
+  quantity_ml INTEGER NOT NULL,
+  fuel_price_halalas_per_l INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','rejected','delivered','expired')),
+  invoiced_halalas INTEGER NOT NULL DEFAULT 0,
+  paid_halalas INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  responded_at TEXT
 );

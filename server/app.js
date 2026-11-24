@@ -10,6 +10,8 @@ import * as fuel from './services/fueling.js';
 import * as docs from './services/documents.js';
 import * as rep from './services/reports.js';
 import * as Con from './services/contracts.js';
+import * as Adm from './services/admin.js';
+import * as Fin from './services/finance.js';
 import { sampleAramcoPdf } from './samples.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -234,10 +236,10 @@ export function createApp() {
     const c = req.ctx; const where = []; const p = [];
     if (c.companyType === 'client') { if (!c.can('order.view')) throw new HttpError(403, 'غير مصرح'); where.push('t.company_id = ?'); p.push(c.companyId); if (c.scopeProjectId) { where.push('o.project_id = ?'); p.push(c.scopeProjectId); } }
     else if (c.role === 'driver') { where.push('t.driver_id = ?'); p.push(c.driverId); }
-    else if (c.companyType === 'carrier') { where.push('t.carrier_id = ?'); p.push(c.companyId); }
-    else if (c.can('platform.admin')) where.push('1=1');
+    else if (c.companyType === 'carrier') { where.push("(t.carrier_id = ? OR (t.status = 'awaiting_acceptance' AND EXISTS (SELECT 1 FROM order_offers f WHERE f.order_id = t.order_id AND f.carrier_id = ? AND f.status = 'pending')))"); p.push(c.companyId, c.companyId); }
+    else if (c.can('platform.view')) where.push('1=1');
     if (req.query.status) { where.push('t.status IN (' + req.query.status.split(',').map(() => '?').join(',') + ')'); p.push(...req.query.status.split(',')); }
-    const showPrice = c.can('price.view') || c.can('platform.admin');
+    const showPrice = c.can('price.view') || c.can('platform.finance');
     return q.all(`SELECT t.id, t.number, t.status, t.planned_start, t.window_start, t.window_end, t.accept_deadline, t.loaded_ml, t.delivered_at, t.created_at, o.number order_number, o.product, o.quantity_ml,
         ${showPrice ? 'o.transport_halalas,' : ''} lp.name loading_point_name, cl.name_ar client_name, ca.name_ar carrier_name, v.plate, d.name driver_name, p.name project_name,
         (SELECT GROUP_CONCAT(st.name, '، ') FROM trip_stops s JOIN sites st ON st.id = s.site_id WHERE s.trip_id = t.id) sites,
@@ -361,7 +363,7 @@ export function createApp() {
   api.post('/carrier/trips/:id/reject', ...K, requireCap('carrier.dispatch'), h((req) => trips.rejectTrip(req.ctx, req.params.id, req.body.reason)));
   api.post('/carrier/trips/:id/assign', ...K, requireCap('carrier.dispatch'), h((req) => trips.assignTrip(req.ctx, req.params.id, req.body)));
   api.get('/carrier/trips/:id/candidates', ...K, requireCap('carrier.dispatch'), h((req) => {
-    const t = q.get('SELECT t.*, o.product, o.quantity_ml FROM trips t JOIN orders o ON o.id = t.order_id WHERE t.id = ? AND t.carrier_id = ?', req.params.id, req.ctx.companyId);
+    const t = q.get('SELECT t.*, o.product, (SELECT COALESCE(SUM(requested_ml),0) FROM trip_stops WHERE trip_id = t.id) quantity_ml FROM trips t JOIN orders o ON o.id = t.order_id WHERE t.id = ? AND t.carrier_id = ?', req.params.id, req.ctx.companyId);
     if (!t) throw new HttpError(404, 'الرحلة غير موجودة');
     return { vehicles: trips.eligibleVehicles(req.ctx.companyId, t.product, t.quantity_ml, t.planned_start, t.planned_end, t.id), drivers: trips.eligibleDrivers(req.ctx.companyId, t.planned_start, t.planned_end, t.id) };
   }));
@@ -405,8 +407,102 @@ export function createApp() {
     return trips.addPhoto(req.ctx, req.params.id, { ...req.body, file_id: f.id, lat: req.body.lat ? Number(req.body.lat) : null, lng: req.body.lng ? Number(req.body.lng) : null });
   }));
 
+  /* ---------------- مركز تشغيل فيول آب ---------------- */
+  const V = [requireAuth, requireCap('platform.view')];
+  const XP = [requireAuth, requireCap('platform.export')];
+  const cell = (v, t) => (v == null || v === '' ? '' : t === 'l' ? L(v) : t === 'sar' ? v / 100 : t === 'dt' ? new Date(v).toLocaleString('ar-SA-u-nu-latn-ca-gregory', { timeZone: 'Asia/Riyadh', dateStyle: 'short', timeStyle: 'short' }) : t === 'prod' ? (docs.PRODUCTS[v] || v) : v);
+  const filterNote = (f) => [Adm.PERIOD_AR[f.period] + (f.period === 'custom' ? ` ${f.from_date || ''} ← ${f.to_date || ''}` : ''), f.company_id && 'الشركة: ' + (q.get('SELECT name_ar FROM companies WHERE id = ?', f.company_id)?.name_ar || ''), f.city && 'المدينة: ' + f.city, f.project_id && 'المشروع: ' + (q.get('SELECT code FROM projects WHERE id = ?', f.project_id)?.code || ''), f.product && 'المنتج: ' + docs.PRODUCTS[f.product]].filter(Boolean).join(' · ');
+  async function sendXlsx(res, name, sheets) {
+    const { default: ExcelJS } = await import('exceljs');
+    const wb = new ExcelJS.Workbook(); wb.creator = 'فيول آب';
+    for (const sh of sheets) {
+      const ws = wb.addWorksheet(sh.name.slice(0, 31), { views: [{ rightToLeft: true, state: 'frozen', ySplit: sh.note ? 3 : 1 }] });
+      if (sh.note) { ws.addRow([sh.title]).font = { bold: true, size: 13 }; ws.addRow([sh.note]); }
+      const hr = ws.addRow(sh.columns.map((c) => c[1]));
+      hr.font = { bold: true, color: { argb: 'FFFFFFFF' } }; hr.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000098' } }; });
+      for (const r of sh.rows) ws.addRow(sh.columns.map((c) => cell(r[c[0]], c[2])));
+      sh.columns.forEach((c, i) => { ws.getColumn(i + 1).width = Math.max(12, c[1].length + 4); });
+    }
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}.xlsx"`);
+    res.end(Buffer.from(await wb.xlsx.writeBuffer()));
+  }
+  const esc = (x) => String(x ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  function sendPrintable(res, title, note, blocks) {
+    res.type('html').send(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(title)}</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<style>@page{size:A4 landscape;margin:12mm}body{font-family:'IBM Plex Sans Arabic',Tahoma,sans-serif;color:#151633;margin:0;padding:22px;font-size:11.5px}
+header{display:flex;align-items:center;gap:14px;border-bottom:3px solid #000098;box-shadow:0 3px 0 #c00000;padding-bottom:10px;margin-bottom:14px}header img{height:54px}
+h1{font-size:19px;margin:0;color:#000098}.note{color:#555}.demo{background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:6px;font-weight:600;margin-inline-start:auto}
+h2{font-size:14px;color:#000098;margin:16px 0 6px}.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}.kpi{border:1px solid #dcdff0;border-radius:8px;padding:6px 8px}.kpi b{display:block;font-size:16px}
+table{width:100%;border-collapse:collapse;margin-bottom:8px}th,td{border:1px solid #e3e5f2;padding:4px 6px;text-align:right}th{background:#f1f2fb}
+footer{margin-top:16px;color:#777;font-size:10px}.print{position:fixed;left:16px;top:16px;background:#000098;color:#fff;border:0;padding:8px 14px;border-radius:6px;font-family:inherit}@media print{.print{display:none}}</style></head><body>
+<button class="print" onclick="print()">طباعة / حفظ PDF</button><header><img src="/brand/logo-mark.png"><div><h1>${esc(title)}</h1><div class="note">${esc(note)}</div></div><span class="demo">بيانات تجريبية</span></header>
+${blocks.map((b) => b.kpis ? `<h2>${esc(b.title)}</h2><div class="kpis">${b.kpis.map(([k, v, u]) => `<div class="kpi">${esc(k)}<b>${esc(v ?? 'بيانات غير كافية')} ${esc(u || '')}</b></div>`).join('')}</div>`
+  : `<h2>${esc(b.title)} (${b.rows.length})</h2><table><tr>${b.columns.map((c) => `<th>${esc(c[1])}</th>`).join('')}</tr>${b.rows.map((r) => `<tr>${b.columns.map((c) => `<td>${esc(cell(r[c[0]], c[2]))}</td>`).join('')}</tr>`).join('')}</table>`).join('')}
+<footer>أُنشئ في ${new Date().toLocaleString('ar-SA-u-nu-latn-ca-gregory', { timeZone: 'Asia/Riyadh' })} بتوقيت الرياض — فيول آب</footer></body></html>`);
+  }
+
+  api.get('/admin/home', ...V, h((req) => Adm.home(req.ctx, Adm.parseFilters(req.query))));
+  api.get('/admin/filters', ...V, h(() => ({
+    companies: q.all("SELECT id, name_ar, type FROM companies WHERE type <> 'platform' ORDER BY type, name_ar"),
+    cities: q.all("SELECT DISTINCT city FROM sites UNION SELECT DISTINCT city FROM companies WHERE city IS NOT NULL AND type <> 'platform' ORDER BY 1").map((r) => r.city),
+    projects: q.all('SELECT p.id, p.code, p.name, c.name_ar company_name FROM projects p JOIN companies c ON c.id = p.company_id ORDER BY c.name_ar, p.code'),
+    products: docs.PRODUCTS, metrics: Object.fromEntries(Object.entries(Adm.METRICS).map(([k, m]) => [k, { label: m.label, def: m.def || null }])),
+    staff: q.all("SELECT u.id, u.name, m.role FROM memberships m JOIN users u ON u.id = m.user_id JOIN companies c ON c.id = m.company_id WHERE c.type = 'platform'"),
+    reports: Object.entries(Adm.REPORTS).map(([k, r]) => ({ key: k, title: r.title, finance: !!r.finance })),
+  })));
+  api.get('/admin/records', ...V, h(async (req, res) => {
+    const f = Adm.parseFilters(req.query); const key = req.query.metric;
+    if (Adm.METRICS[key]?.finance && !req.ctx.can('platform.finance')) throw new HttpError(403, 'يتطلب صلاحية المالية');
+    const r = Adm.records(key, f, { limit: req.query.format ? 5000 : 500, finance: req.ctx.can('platform.finance') });
+    if (req.query.format === 'xlsx') {
+      if (!req.ctx.can('platform.export')) throw new HttpError(403, 'التصدير غير مسموح لدورك');
+      audit(req.ctx, 'admin.export', 'metric', key, { filters: req.query, rows: r.rows.length });
+      return sendXlsx(res, `fuelapp-${key}`, [{ name: r.label, title: r.label, note: filterNote(f), columns: r.columns, rows: r.rows }]);
+    }
+    return r;
+  }));
+  api.get('/admin/companies', ...V, h((req) => Adm.records('companies.all', Adm.parseFilters({ ...req.query, period: 'all' })).rows));
+  api.get('/admin/companies/:id', ...V, h((req) => Adm.companyProfile(req.ctx, req.params.id, Adm.parseFilters(req.query))));
+  api.get('/admin/companies/:id/export', ...XP, h(async (req, res) => {
+    const f = Adm.parseFilters(req.query); const r = Adm.companyReport(req.ctx, req.params.id, f);
+    const p = r.profile; const note = filterNote({ ...f, company_id: null });
+    audit(req.ctx, 'admin.export.company', 'company', req.params.id, { filters: req.query, format: req.query.format });
+    const kpiRows = p.groups.flatMap((g) => g.metrics.map((m) => ({ group: g.title, label: m.label, value: m.value ?? 'بيانات غير كافية', unit: m.unit || '' })));
+    if (req.query.format === 'pdf') return sendPrintable(res, `تقرير ${p.company.name_ar}`, note, [...p.groups.map((g) => ({ title: g.title, kpis: g.metrics.map((m) => [m.label, m.value, m.unit]) })), ...r.lists.map((l) => ({ title: l.label, columns: l.columns, rows: l.rows }))]);
+    return sendXlsx(res, `fuelapp-${p.company.name_ar}`, [{ name: 'الملخص', title: `تقرير ${p.company.name_ar}`, note, columns: [['group', 'القسم'], ['label', 'المؤشر'], ['value', 'القيمة'], ['unit', 'الوحدة']], rows: kpiRows },
+      ...r.lists.map((l) => ({ name: l.label, columns: l.columns, rows: l.rows }))]);
+  }));
+  api.get('/admin/search', ...V, h((req) => Adm.search(req.query.q)));
+  api.get('/admin/orders/:id', ...V, h((req) => Adm.orderDetail(req.ctx, req.params.id)));
+  api.get('/admin/reports/:key', ...V, h(async (req, res) => {
+    const f = Adm.parseFilters(req.query); const r = Adm.report(req.ctx, req.params.key, f);
+    if (req.query.format) {
+      if (!req.ctx.can('platform.export')) throw new HttpError(403, 'التصدير غير مسموح لدورك');
+      audit(req.ctx, 'admin.export.report', 'report', req.params.key, { filters: req.query, format: req.query.format, rows: r.rows.length });
+      if (req.query.format === 'pdf') return sendPrintable(res, r.title, filterNote(f), [...(r.summary ? [{ title: 'الملخص', kpis: r.summary.map(([k, v]) => [k, v, 'لتر']) }] : []), { title: r.title, columns: r.columns, rows: r.rows }]);
+      return sendXlsx(res, `fuelapp-${req.params.key}`, [{ name: r.title, title: r.title, note: filterNote(f), columns: r.columns, rows: r.rows }]);
+    }
+    return { ...r, rows: r.rows.slice(0, 1000) };
+  }));
+  // إجراءات حساسة: تُسجّل في سجل التدقيق
+  api.post('/admin/follow-ups', requireAuth, requireCap('platform.manage'), h((req) => {
+    const { entity_type, entity_id, assignee_user_id, note } = req.body;
+    if (!['order', 'trip', 'company', 'document'].includes(entity_type) || !entity_id) throw new HttpError(400, 'حدد السجل');
+    const id = uid('fu_'); q.run('INSERT INTO follow_ups(id,entity_type,entity_id,assignee_user_id,note,created_by) VALUES (?,?,?,?,?,?)', id, entity_type, entity_id, assignee_user_id || req.ctx.userId, note || null, req.ctx.userId);
+    audit(req.ctx, 'admin.follow_up.assign', entity_type, entity_id, { assignee_user_id, note }); return { id };
+  }));
+  api.post('/admin/follow-ups/:id/close', requireAuth, requireCap('platform.manage'), h((req) => {
+    const r = q.run("UPDATE follow_ups SET status='done', closed_at=? WHERE id = ? AND status='open'", now(), req.params.id); if (!r.changes) throw new HttpError(404, 'غير موجود');
+    audit(req.ctx, 'admin.follow_up.close', 'follow_up', req.params.id); return { ok: true };
+  }));
+  api.post('/admin/invoices/:id/pay', requireAuth, requireCap('platform.finance'), requireCap('platform.manage'), h((req) => Fin.payInvoice(req.ctx, req.params.id, req.body.amount_sar)));
+  api.post('/admin/settlements/:id/pay', requireAuth, requireCap('platform.finance'), requireCap('platform.manage'), h((req) => Fin.paySettlement(req.ctx, req.params.id)));
+  api.get('/admin/audit', ...V, h(() => q.all(`SELECT a.*, u.name user_name FROM audit_log a LEFT JOIN users u ON u.id = a.user_id WHERE a.action LIKE 'admin.%' OR a.action LIKE 'company.%' OR a.action LIKE 'company_doc.%' OR a.action = 'auth.demo_enter' ORDER BY a.id DESC LIMIT 300`)));
+
   /* ---------------- إدارة فيول آب ---------------- */
-  const A = [requireAuth, requireCap('platform.admin')];
+  const A = [requireAuth, requireCap('platform.view')];
   api.get('/admin/overview', ...A, h(() => ({
     companies: q.all(`SELECT c.*, (SELECT COUNT(*) FROM company_documents d WHERE d.company_id = c.id AND d.status='pending') pending_docs,
         (SELECT COUNT(*) FROM trips t WHERE t.company_id = c.id OR t.carrier_id = c.id) trips FROM companies c WHERE c.type <> 'platform' ORDER BY c.status, c.created_at`),
@@ -415,7 +511,7 @@ export function createApp() {
     gmv_halalas: q.get("SELECT COALESCE(SUM(transport_halalas),0) s FROM orders WHERE status NOT IN ('cancelled','rejected')").s,
     totals: { fuelings: q.get('SELECT COUNT(*) n FROM fuelings').n, assets: q.get('SELECT COUNT(*) n FROM assets').n, tags: q.get("SELECT COUNT(*) n FROM nfc_tags WHERE status='active'").n },
   })));
-  api.post('/admin/companies/:id/:action', ...A, h((req) => tx(() => {
+  api.post('/admin/companies/:id/:action(approve|suspend|reject)', requireAuth, requireCap('platform.admin'), h((req) => tx(() => {
     const map = { approve: 'approved', suspend: 'suspended', reject: 'rejected' }; const st = map[req.params.action]; if (!st) throw new HttpError(400, 'إجراء غير معروف');
     const c = q.get('SELECT * FROM companies WHERE id = ?', req.params.id); if (!c) throw new HttpError(404, 'الشركة غير موجودة');
     q.run('UPDATE companies SET status = ? WHERE id = ?', st, c.id);
@@ -426,7 +522,7 @@ export function createApp() {
     }
     audit(req.ctx, 'company.' + st, 'company', c.id, { reason: req.body.reason }); return { ok: true };
   })));
-  api.post('/admin/documents/:id/:action', ...A, h((req) => {
+  api.post('/admin/documents/:id/:action(approve|reject)', requireAuth, requireCap('platform.admin'), h((req) => {
     const st = { approve: 'approved', reject: 'rejected' }[req.params.action]; if (!st) throw new HttpError(400, 'إجراء غير معروف');
     q.run('UPDATE company_documents SET status = ?, reviewed_by = ?, reviewed_at = ?, note = ? WHERE id = ?', st, req.ctx.userId, now(), req.body.note || null, req.params.id);
     audit(req.ctx, 'company_doc.' + st, 'company_document', req.params.id); return { ok: true };

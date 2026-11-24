@@ -125,6 +125,19 @@ export async function seedDemo({ history = true } = {}) {
   ['ast_1', 'ast_2', 'ast_3', 'ast_4', 'ast_5', 'ast_6', 'ast_7', 'ast_8'].forEach((a, i) => fuel.bindTag(supervisor, { uid: `04A1B2C3D4E5${String(i + 1).padStart(2, '0')}`, asset_id: a, test_read_ok: true }));
   fuel.bindTag(supervisor, { uid: '04A1B2C3D4E509', asset_id: 'ast_9', test_read_ok: false }); // بانتظار التفعيل
 
+  // حسابات المنصة الإضافية والمورد
+  member(user('reviewer@fuelapp.demo', 'مراجع المنصة'), 'co_fuelapp', 'platform_reviewer');
+  member(user('ops@fuelapp.demo', 'عمليات فيول آب', '0590000001'), 'co_fuelapp', 'platform_ops');
+  company('co_sup1', 'supplier', 'شركة إمداد الطاقة (تجريبي)', 'Imdad Energy (Demo)', 'الرياض');
+  member(user('supplier1@fuelapp.demo', 'وليد السهلي'), 'co_sup1', 'supplier_admin');
+  q.run("INSERT INTO company_documents(id,company_id,doc_type,number,expires_at,status) VALUES (?, 'co_sup1', 'cr', '7001234567', '2027-04-01', 'approved')", uid('cd_'));
+  // أساطيل بأعداد وحالات مختلفة
+  const dExp = (n) => new Date(Date.now() + n * 864e5 + 3 * 3600e3).toISOString().slice(0, 10);
+  q.run("INSERT INTO vehicles(id,company_id,plate,capacity_ml,products,status,docs_valid_until) VALUES ('veh_6','co_car1','هـ و ي 5521',?, 'diesel', 'maintenance', '2027-08-31')", ML(32000));
+  q.run("INSERT INTO drivers(id,company_id,name,phone,license_no,license_expiry,status) VALUES ('drv_4','co_car1','سامي العتيبي','0552000004','L-771230','2027-05-01','suspended')");
+  q.run("INSERT INTO drivers(id,company_id,name,phone,license_no,license_expiry) VALUES ('drv_5','co_car1','ياسر الحربي','0552000005','L-660128',?)", dExp(12));
+  q.run("INSERT INTO drivers(id,company_id,name,phone,license_no,license_expiry) VALUES ('drv_6','co_car2','منصور القرني','0554000006','L-330912','2026-10-01')");
+
   if (history) await seedHistory({ ctx, admin, supervisor });
   return { password: DEMO_PASSWORD };
 }
@@ -261,6 +274,139 @@ async function seedHistory({ ctx, admin, supervisor }) {
   K.carrierDecide(carrierAdmin, 'capacity', cp.id, { decision: 'accept' });
   K.createReservation(procure, { carrier_id: 'co_car1', delivery_city: 'الرياض', product: 'diesel', period_start: day(10), period_end: day(11), trips: 4 });
   void finance;
+  await seedOps({ ctx, procure, admin, supervisor, receiver, driver1, driver2, dispatcher });
+  normalizeTimes();
+}
+
+/** يزيح كل أوقات طلب ورحلاته وعروضه وفواتيره بعدد ثوانٍ (لبيانات تاريخية متسقة) */
+function shiftOrder(orderId, seconds) {
+  const sh = (col) => `${col} = CASE WHEN ${col} IS NULL THEN NULL ELSE strftime('%Y-%m-%dT%H:%M:%fZ', ${col}, '${seconds >= 0 ? '+' : ''}${seconds} seconds') END`;
+  const trips = q.all('SELECT id FROM trips WHERE order_id = ?', orderId).map((t) => t.id);
+  q.run(`UPDATE orders SET ${sh('created_at')} WHERE id = ?`, orderId);
+  q.run(`UPDATE order_offers SET ${sh('sent_at')}, ${sh('deadline')}, ${sh('responded_at')} WHERE order_id = ?`, orderId);
+  for (const t of trips) {
+    q.run(`UPDATE trips SET ${['created_at', 'accepted_at', 'assigned_at', 'loaded_at', 'delivered_at', 'closed_at', 'accept_deadline'].map(sh).join(', ')} WHERE id = ?`, t);
+    q.run(`UPDATE trip_events SET ${sh('captured_at')}, ${sh('received_at')} WHERE trip_id = ?`, t);
+    q.run(`UPDATE trip_photos SET ${sh('captured_at')}, ${sh('received_at')} WHERE trip_id = ?`, t);
+    q.run(`UPDATE assignment_history SET ${sh('at')} WHERE trip_id = ?`, t);
+    q.run(`UPDATE trip_stops SET ${sh('arrived_at')}, ${sh('delivered_at')}, ${sh('receiver_ack_at')} WHERE trip_id = ?`, t);
+    q.run(`UPDATE invoices SET ${sh('issued_at')}, ${sh('due_at')}, ${sh('paid_at')} WHERE trip_id = ?`, t);
+    q.run(`UPDATE carrier_settlements SET ${sh('due_at')}, ${sh('paid_at')} WHERE trip_id = ?`, t);
+    q.run(`UPDATE exceptions SET ${sh('created_at')}, ${sh('decided_at')} WHERE (ref_type = 'trip' AND ref_id = ?) OR (ref_type = 'trip_stop' AND ref_id IN (SELECT id FROM trip_stops WHERE trip_id = ?))`, t, t);
+    q.run(`UPDATE fuel_movements SET ${sh('created_at')}, ${sh('effective_at')} WHERE ref_type = 'trip_stop' AND ref_id IN (SELECT id FROM trip_stops WHERE trip_id = ?)`, t);
+    q.run(`UPDATE fuel_batches SET ${sh('created_at')} WHERE trip_stop_id IN (SELECT id FROM trip_stops WHERE trip_id = ?)`, t);
+    q.run(`UPDATE fuelings SET ${sh('created_at')}, ${sh('approved_at')}, ${sh('captured_at')} WHERE trip_id = ? OR batch_id IN (SELECT b.id FROM fuel_batches b JOIN trip_stops s ON s.id = b.trip_stop_id WHERE s.trip_id = ?)`, t, t);
+  }
+}
+const secondsUntil = (iso) => Math.round((new Date(iso) - Date.now()) / 1000);
+
+/** مواءمة الأوقات للرحلات التاريخية القديمة: العرض أُرسل وقت الطلب، والفاتورة صدرت وقت التسليم */
+function normalizeTimes() {
+  q.run(`UPDATE order_offers SET sent_at = (SELECT created_at FROM orders o WHERE o.id = order_id),
+      deadline = strftime('%Y-%m-%dT%H:%M:%fZ', (SELECT created_at FROM orders o WHERE o.id = order_id), '+120 minutes'),
+      responded_at = CASE WHEN responded_at IS NULL THEN NULL ELSE COALESCE((SELECT MIN(accepted_at) FROM trips t WHERE t.order_id = order_offers.order_id AND order_offers.status = 'accepted'), strftime('%Y-%m-%dT%H:%M:%fZ', (SELECT created_at FROM orders o WHERE o.id = order_id), '+35 minutes')) END
+    WHERE sent_at > (SELECT created_at FROM orders o WHERE o.id = order_id)`);
+  q.run(`UPDATE invoices SET issued_at = (SELECT delivered_at FROM trips t WHERE t.id = trip_id), due_at = strftime('%Y-%m-%dT%H:%M:%fZ', (SELECT delivered_at FROM trips t WHERE t.id = trip_id), '+30 days')
+    WHERE issued_at > (SELECT delivered_at FROM trips t WHERE t.id = trip_id)`);
+  q.run(`UPDATE carrier_settlements SET due_at = strftime('%Y-%m-%dT%H:%M:%fZ', (SELECT delivered_at FROM trips t WHERE t.id = trip_id), '+15 days')
+    WHERE due_at > strftime('%Y-%m-%dT%H:%M:%fZ', (SELECT delivered_at FROM trips t WHERE t.id = trip_id), '+15 days')`);
+}
+
+/** سيناريوهات تشغيل متنوعة لمركز التشغيل */
+async function seedOps({ ctx, procure, admin, supervisor, receiver, driver1, driver2, dispatcher }) {
+  const car2 = ctx('carrier2@fuelapp.demo');
+  const driver3 = ctx('driver3@fuelapp.demo');
+  const client2 = ctx('client2@fuelapp.demo');
+  const adminP = ctx('admin@fuelapp.demo');
+  const day = (o) => new Date(Date.now() + o * 864e5 + 3 * 3600e3).toISOString().slice(0, 10);
+  const newDoc = async (who, no, lp, lpCode, liters) => {
+    const d = await docs.uploadAramcoDocument(who, { buffer: sampleAramcoPdf({ docNumber: no, lpCode, lpName: lpCode + ' Plant', liters, issue: day(-30), valid: day(60) }), originalname: no + '.pdf', mimetype: 'application/pdf' });
+    docs.approveDocument(who, d.id, { doc_number: no, loading_point_id: lp, product: 'diesel', quantity_liters: liters });
+    return d.id;
+  };
+  const doc1 = await newDoc(procure, 'SA-FLA-2026-120455', 'lp_ryd', 'RBP', 400000);
+  const doc2 = await newDoc(client2, 'SA-FLA-2026-207731', 'lp_dmm', 'DBP', 100000);
+  const photo = (drv, tripId, kind, stopId) => {
+    const f = docs.storeFile(drv, { buffer: makePng(120, 80, PHOTO_COLORS[kind]), originalname: kind + '.png', mimetype: 'image/png' }, 'trip_photo');
+    trips.addPhoto(drv, tripId, { kind, stop_id: stopId, file_id: f.id, client_op_id: uid('op_') });
+  };
+  const drive = (drv, tripId, { loaded, delivered, skipPhoto }) => {
+    for (const to of ['to_loading', 'at_loading']) trips.driverAdvance(drv, tripId, { to });
+    photo(drv, tripId, 'before_loading');
+    trips.driverAdvance(drv, tripId, { to: 'loaded', loaded_liters: loaded, measure_method: 'عداد محطة التحميل' });
+    photo(drv, tripId, 'after_loading');
+    trips.driverAdvance(drv, tripId, { to: 'to_delivery' });
+    const a = trips.driverAdvance(drv, tripId, { to: 'at_site' });
+    photo(drv, tripId, 'before_unloading', a.stop_id);
+    trips.driverDeliverStop(drv, tripId, a.stop_id, { delivered_liters: delivered, measure_method: 'عداد الصهريج' });
+    if (skipPhoto !== 'after_unloading') photo(drv, tripId, 'after_unloading', a.stop_id);
+    return a.stop_id;
+  };
+  const order = (who, doc, d, rp, extras, stops, split) => trips.createOrder(who, { route_price_id: rp, extra_route_price_ids: extras, aramco_document_id: doc, date: day(d), window_start: '06:00', window_end: '16:00', stops, split_trips: split, fuel_price_per_liter: 1.66 });
+  const atDay = (d, hh = 8) => new Date(`${day(d)}T${String(hh).padStart(2, '0')}:30:00+03:00`).toISOString();
+  const S1 = (qty, mode = 'direct') => [mode === 'direct' ? { site_id: 'sit_2', mode: 'direct', quantity_liters: qty } : { site_id: 'sit_1', mode: 'tank', tank_id: 'tnk_1', quantity_liters: qty }];
+
+  // A: لناقلين — قبله ناقلات الوسطى، نُفذ وفاتورته مسددة
+  const A = order(procure, doc1, -20, 'rp_c1_ryd', ['rp_c2_ryd'], S1(15000));
+  trips.acceptTrip(dispatcher, A.trip_id); trips.assignTrip(dispatcher, A.trip_id, { vehicle_id: 'veh_1', driver_id: 'drv_1' });
+  trips.confirmStop(admin, { id: drive(driver1, A.trip_id, { loaded: 15000, delivered: 15000 }) }, { ack: 'confirmed' });
+  // B: لناقلين — قبله أسطول الشرقية، فاتورته غير مسددة
+  const B = order(procure, doc1, -16, 'rp_c1_ryd', ['rp_c2_ryd'], S1(12000, 'tank'));
+  trips.acceptTrip(car2, B.trip_id); trips.assignTrip(car2, B.trip_id, { vehicle_id: 'veh_4', driver_id: 'drv_3' });
+  trips.confirmStop(receiver, { id: drive(driver3, B.trip_id, { loaded: 12000, delivered: 12000 }) }, { ack: 'confirmed' });
+  // C: رفضه الناقلان
+  const C = order(procure, doc1, -14, 'rp_c1_ryd', ['rp_c2_ryd'], S1(9000));
+  trips.rejectTrip(dispatcher, C.trip_id, 'لا توجد سعة في هذا الموعد'); trips.rejectTrip(car2, C.trip_id, 'المسار خارج جدول الأسبوع');
+  // D: رفضه ناقل والآخر لم يرد حتى انتهت المهلة ← متأخر بلا رد
+  const D = order(procure, doc1, -10, 'rp_c1_ryd', ['rp_c2_ryd'], S1(7000));
+  trips.rejectTrip(dispatcher, D.trip_id, 'الصهاريج في الصيانة');
+  // E: طلب واحد مقسّم إلى 3 رحلات
+  const E = order(procure, doc1, -8, 'rp_c1_ryd', [], S1(30000), 3);
+  trips.acceptTrip(dispatcher, E.trip_id);
+  const [e1, e2, e3] = E.trip_ids;
+  trips.assignTrip(dispatcher, e1, { vehicle_id: 'veh_1', driver_id: 'drv_1' });
+  trips.assignTrip(dispatcher, e2, { vehicle_id: 'veh_2', driver_id: 'drv_2' });
+  trips.assignTrip(dispatcher, e3, { vehicle_id: 'veh_3', driver_id: 'drv_5' }); // تبقى مسندة ← متأخرة
+  trips.confirmStop(admin, { id: drive(driver1, e1, { loaded: 10000, delivered: 10000 }) }, { ack: 'confirmed' });
+  trips.confirmStop(admin, { id: drive(driver2, e2, { loaded: 10000, delivered: 9900 }) }, { ack: 'disputed', note: 'العداد سجل 9,900 والفرق 100 لتر' });
+  // F: أُلغي بعد قبول الناقل
+  const F = order(procure, doc1, -6, 'rp_c1_ryd', [], S1(8000));
+  trips.acceptTrip(dispatcher, F.trip_id); trips.cancelTrip(procure, F.trip_id, 'تأجيل أعمال الموقع');
+  // G: أسطول الشرقية — سُلّم دون صورة بعد التفريغ ← توثيق ناقص
+  const G = order(procure, doc1, -4, 'rp_c2_ryd', [], S1(10000));
+  trips.acceptTrip(car2, G.trip_id); trips.assignTrip(car2, G.trip_id, { vehicle_id: 'veh_4', driver_id: 'drv_3' });
+  trips.confirmStop(admin, { id: drive(driver3, G.trip_id, { loaded: 10000, delivered: 10000, skipPhoto: 'after_unloading' }) }, { ack: 'confirmed' });
+  // I: العميل الثاني في الدمام — سداد جزئي
+  const I = order(client2, doc2, -5, 'rp_c2_dmm', [], [{ site_id: 'sit_21', mode: 'direct', quantity_liters: 8000 }]);
+  trips.acceptTrip(car2, I.trip_id); trips.assignTrip(car2, I.trip_id, { vehicle_id: 'veh_4', driver_id: 'drv_3' });
+  trips.confirmStop(client2, { id: drive(driver3, I.trip_id, { loaded: 8000, delivered: 8000 }) }, { ack: 'confirmed' });
+  // H: جديد اليوم لناقلين بانتظار الرد
+  order(procure, doc1, 1, 'rp_c1_ryd', ['rp_c2_ryd'], S1(6000));
+
+  // إزاحة الأوقات لتطابق تواريخ الطلبات
+  for (const [o, d, h] of [[A, -21, 9], [B, -17, 10], [C, -15, 11], [D, -11, 9], [E, -9, 8], [F, -7, 13], [G, -5, 9], [I, -6, 10]]) shiftOrder(o.order_id, secondsUntil(atDay(d, h)));
+  // ردود الناقلين بعد وقت واقعي من الإرسال
+  q.run(`UPDATE order_offers SET responded_at = strftime('%Y-%m-%dT%H:%M:%fZ', sent_at, '+' || (17 + abs(random()) % 70) || ' minutes') WHERE responded_at IS NOT NULL`);
+
+  // المالية: سداد فواتير ومستحقات
+  const inv = (tripId) => q.get('SELECT id FROM invoices WHERE trip_id = ?', tripId)?.id;
+  const Fin = await import('./services/finance.js');
+  Fin.payInvoice(adminP, inv(A.trip_id)); Fin.payInvoice(adminP, inv(e1));
+  const i2 = q.get('SELECT * FROM invoices WHERE trip_id = ?', I.trip_id); Fin.payInvoice(adminP, i2.id, Math.round(i2.total_halalas / 2) / 100);
+  Fin.paySettlement(adminP, q.get('SELECT id FROM carrier_settlements WHERE trip_id = ?', A.trip_id).id);
+
+  // عروض المورد
+  const so = (no, client, orderId, carrier, liters, price, status, inv, paid, d) => q.run(`INSERT INTO supply_offers(id,number,supplier_id,client_id,order_id,carrier_id,product,quantity_ml,fuel_price_halalas_per_l,status,invoiced_halalas,paid_halalas,created_at,responded_at)
+      VALUES (?,?, 'co_sup1', ?,?,?, 'diesel', ?,?,?,?,?,?,?)`, uid('so_'), no, client, orderId, carrier, ML(liters), price, status, inv, paid, atDay(d), status === 'pending' ? null : atDay(d, 11));
+  so('FA-SUP-000001', 'co_cli1', A.order_id, 'co_car1', 15000, 164, 'delivered', 15000 * 164, 15000 * 164, -21);
+  so('FA-SUP-000002', 'co_cli1', B.order_id, 'co_car2', 12000, 165, 'delivered', 12000 * 165, 0, -17);
+  so('FA-SUP-000003', 'co_cli2', null, null, 20000, 163, 'accepted', 0, 0, -3);
+  so('FA-SUP-000004', 'co_cli1', null, null, 25000, 162, 'pending', 0, 0, 0);
+  so('FA-SUP-000005', 'co_cli2', null, null, 10000, 168, 'rejected', 0, 0, -9);
+
+  // متابعة معيّنة من العمليات على الطلب بلا رد
+  const ops = q.get("SELECT u.id FROM users u WHERE email = 'ops@fuelapp.demo'").id;
+  q.run("INSERT INTO follow_ups(id,entity_type,entity_id,assignee_user_id,note,created_by) VALUES (?, 'order', ?, ?, 'التواصل مع أسطول الشرقية لتأكيد السعة أو إعادة الطرح', ?)", uid('fu_'), D.order_id, ops, ops);
 }
 
 function backdate(r, offsetMin) {

@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { q, tx, uid, now, nextNumber, audit, notify, HttpError, L, ML } from '../db.js';
 import { createReceiptForStop, createDirectBatchForStop } from './inventory.js';
 import * as K from './contracts.js';
+import * as F from './finance.js';
 
 export const VAT_RATE = 0.15;
 export const ACTIVE_TRIP = ['awaiting_assignment','assigned','to_loading','at_loading','loaded','to_delivery','at_site','on_hold'];
@@ -42,6 +43,14 @@ export function quotePrice(rp, quantityMl) {
       cancel_fee_halalas: rp.cancel_fee_halalas, accept_within_minutes: rp.accept_within_minutes,
     },
   };
+}
+
+/** سعر طلب من عدة رحلات: مجموع تسعير كل رحلة (السعر الثابت للرحلة يتكرر) */
+export function quoteTrips(rp, qtys) {
+  const parts = qtys.map((x) => quotePrice(rp, x));
+  if (parts.length === 1) return parts[0];
+  const sum = (k) => parts.reduce((a, p) => a + p[k], 0);
+  return { ...parts[0], base_halalas: sum('base_halalas'), platform_fee_halalas: sum('platform_fee_halalas'), vat_halalas: sum('vat_halalas'), total_halalas: sum('total_halalas'), trips: parts.length };
 }
 
 function overlapping(col, id, start, end, excludeTripId) {
@@ -157,7 +166,7 @@ export function documentQuantities(docId) {
 /* إنشاء طلب نقل + رحلة                                                 */
 /* ------------------------------------------------------------------ */
 export function createOrder(ctx, body) {
-  const { route_price_id, contract_rate_id, package_id, aramco_document_id, date, window_start, window_end, stops, notes, idempotency_key, fuel_price_per_liter, project_id } = body;
+  const { route_price_id, contract_rate_id, package_id, aramco_document_id, date, window_start, window_end, stops, notes, idempotency_key, fuel_price_per_liter, project_id, extra_route_price_ids = [], split_trips } = body;
   if (idempotency_key) {
     const ex = q.get('SELECT id FROM orders WHERE idempotency_key = ? AND company_id = ?', idempotency_key, ctx.companyId);
     if (ex) return { order_id: ex.id, duplicate: true };
@@ -212,8 +221,21 @@ export function createOrder(ctx, body) {
     });
 
     const { start, end } = planWindow(date, window_start, window_end);
+    // تقسيم الطلب إلى عدة رحلات (لنقطة تسليم واحدة): طلب واحد ← n رحلة
+    const nSplit = Math.max(1, Math.min(10, Number(split_trips) || 1));
+    if (nSplit > 1 && (stops.length !== 1 || pkg)) throw new HttpError(400, 'التقسيم متاح لطلب بنقطة تسليم واحدة وخارج الباقات');
+    const tripPlans = nSplit > 1
+      ? Array.from({ length: nSplit }, (_, i) => { const each = Math.floor(ML(stops[0].quantity_liters) / nSplit); return [{ ...stops[0], ml: i === nSplit - 1 ? ML(stops[0].quantity_liters) - each * (nSplit - 1) : each }]; })
+      : [stops.map((x) => ({ ...x, ml: ML(x.quantity_liters) }))];
+    const tripQtys = tripPlans.map((st) => st.reduce((a, x) => a + x.ml, 0));
     if (pkg && totalMl > pkg.max_liters_per_trip_ml) throw new HttpError(409, `الكمية تتجاوز حد الرحلة في الباقة (${L(pkg.max_liters_per_trip_ml)} لتر)`);
-    const quote = pkg ? K.packageQuote(pkg) : { ...quotePrice(rp, totalMl), ...(contractNumber ? { contract_number: contractNumber } : {}) };
+    const quote = pkg ? K.packageQuote(pkg) : { ...quoteTrips(rp, tripQtys), ...(contractNumber ? { contract_number: contractNumber } : {}) };
+    // إرسال الطلب لناقلين إضافيين (أسعار منشورة لنفس المسار): أول من يقبل يُعتمد
+    const extras = (pkg || contract_rate_id) ? [] : [...new Set(extra_route_price_ids)].map((rid) => {
+      const x = q.get(`SELECT rp.* FROM route_prices rp JOIN companies c ON c.id = rp.carrier_id AND c.status = 'approved' WHERE rp.id = ? AND rp.active = 1`, rid);
+      if (!x || x.loading_point_id !== rp.loading_point_id || x.delivery_city !== rp.delivery_city || x.product !== rp.product) throw new HttpError(400, 'أحد الناقلين الإضافيين لا يخدم نفس المسار');
+      return x;
+    }).filter((x) => x.carrier_id !== rp.carrier_id);
     const orderId = uid('ord_');
     const orderNo = nextNumber('order', 'FA-ORD');
     q.run(`INSERT INTO orders(id,number,company_id,project_id,created_by,product,quantity_ml,loading_point_id,aramco_document_id,requested_date,
@@ -224,24 +246,34 @@ export function createOrder(ctx, body) {
       quote.base_halalas, fuel_price_per_liter != null && fuel_price_per_liter !== '' ? Math.round(Number(fuel_price_per_liter) * 100) : null,
       'pending_carrier', idempotency_key || null, notes || null, contractId, contract_rate_id || null, pkg?.id ?? null);
 
-    const tripId = uid('trp_');
-    const tripNo = nextNumber('trip', 'FA-TRP');
     const deadline = new Date(Date.now() + rp.accept_within_minutes * 60000).toISOString();
-    q.run(`INSERT INTO trips(id,number,order_id,company_id,carrier_id,status,planned_start,planned_end,window_start,window_end,accept_deadline)
-        VALUES (?,?,?,?,?,'awaiting_acceptance',?,?,?,?,?)`, tripId, tripNo, orderId, ctx.companyId, rp.carrier_id, start, end, start, end, deadline);
-    stops.forEach((s, i) => {
-      const site = sitesRows[i];
-      q.run(`INSERT INTO trip_stops(id,trip_id,seq,site_id,mode,tank_id,requested_ml,receiver_name,receiver_phone,access_notes,receipt_token)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?)`, uid('stp_'), tripId, i + 1, site.id, s.mode === 'direct' ? 'direct' : 'tank',
-        s.mode === 'tank' ? s.tank_id : null, ML(s.quantity_liters), s.receiver_name || site.receiver_name, s.receiver_phone || site.receiver_phone,
-        s.access_notes || site.access_notes, crypto.randomBytes(16).toString('hex'));
+    const created = [];
+    tripPlans.forEach((plan) => {
+      const tripId = uid('trp_'); const tripNo = nextNumber('trip', 'FA-TRP');
+      q.run(`INSERT INTO trips(id,number,order_id,company_id,carrier_id,status,planned_start,planned_end,window_start,window_end,accept_deadline)
+          VALUES (?,?,?,?,?,'awaiting_acceptance',?,?,?,?,?)`, tripId, tripNo, orderId, ctx.companyId, rp.carrier_id, start, end, start, end, deadline);
+      plan.forEach((s, i) => {
+        const site = sitesRows[nSplit > 1 ? 0 : i];
+        q.run(`INSERT INTO trip_stops(id,trip_id,seq,site_id,mode,tank_id,requested_ml,receiver_name,receiver_phone,access_notes,receipt_token)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)`, uid('stp_'), tripId, i + 1, site.id, s.mode === 'direct' ? 'direct' : 'tank',
+          s.mode === 'tank' ? s.tank_id : null, s.ml, s.receiver_name || site.receiver_name, s.receiver_phone || site.receiver_phone,
+          s.access_notes || site.access_notes, crypto.randomBytes(16).toString('hex'));
+      });
+      for (const c of [rp, ...extras]) q.run("INSERT INTO assignment_history(trip_id,carrier_id,action,by_user) VALUES (?,?,'offered',?)", tripId, c.carrier_id, ctx.userId);
+      event(tripId, null, 'created', null, 'awaiting_acceptance', ctx);
+      K.onOrderCreated(ctx, { orderId, tripId, packageId: pkg?.id, projectId: project_id || sitesRows[0].project_id, carrierId: rp.carrier_id, city: sitesRows[0].city, product: rp.product, date });
+      created.push({ tripId, tripNo });
     });
-    q.run("INSERT INTO assignment_history(trip_id,carrier_id,action,by_user) VALUES (?,?,'offered',?)", tripId, rp.carrier_id, ctx.userId);
-    event(tripId, null, 'created', null, 'awaiting_acceptance', ctx);
-    K.onOrderCreated(ctx, { orderId, tripId, packageId: pkg?.id, projectId: project_id || sitesRows[0].project_id, carrierId: rp.carrier_id, city: sitesRows[0].city, product: rp.product, date });
-    audit(ctx, 'order.create', 'order', orderId, { trip: tripNo, carrier: rp.carrier_id, total: quote.total_halalas });
-    notify(rp.carrier_id, 'dispatcher', `طلب نقل جديد ${tripNo}`, `${L(totalMl).toLocaleString('ar-SA')} لتر - ${rp.delivery_city}`, `/carrier/trips/${tripId}`, `offer:${tripId}`);
-    return { order_id: orderId, order_number: orderNo, trip_id: tripId, trip_number: tripNo };
+    // سطر عرض لكل ناقل وصله الطلب
+    for (const c of [rp, ...extras]) {
+      const cq = c === rp ? quote : quoteTrips(c, tripQtys);
+      const dl = new Date(Date.now() + (c.accept_within_minutes || 120) * 60000).toISOString();
+      q.run('INSERT INTO order_offers(id,order_id,carrier_id,route_price_id,quote_json,deadline) VALUES (?,?,?,?,?,?)', uid('off_'), orderId, c.carrier_id, c.id || null, JSON.stringify(cq), dl);
+      notify(c.carrier_id, 'dispatcher', `طلب نقل جديد ${orderNo}`, `${L(totalMl).toLocaleString('ar-SA')} لتر - ${rp.delivery_city}${created.length > 1 ? ` · ${created.length} رحلات` : ''}`, `/carrier/trips/${created[0].tripId}`, `offer:${orderId}:${c.carrier_id}`);
+    }
+    const tripId = created[0].tripId, tripNo = created[0].tripNo;
+    audit(ctx, 'order.create', 'order', orderId, { trips: created.map((x) => x.tripNo), carriers: [rp, ...extras].map((c) => c.carrier_id), total: quote.total_halalas });
+    return { order_id: orderId, order_number: orderNo, trip_id: tripId, trip_number: tripNo, trip_ids: created.map((x) => x.tripId) };
   });
 }
 
@@ -268,31 +300,61 @@ function carrierTrip(ctx, tripId) {
   return t;
 }
 
+/** الناقل الذي وصله الطلب (المعتمد أو أحد المعروض عليهم) */
+function offerFor(ctx, tripId) {
+  const t = q.get('SELECT * FROM trips WHERE id = ?', tripId);
+  if (!t) throw new HttpError(404, 'الرحلة غير موجودة');
+  const off = q.get('SELECT * FROM order_offers WHERE order_id = ? AND carrier_id = ?', t.order_id, ctx.companyId);
+  if (!off && t.carrier_id !== ctx.companyId) throw new HttpError(404, 'الرحلة غير موجودة');
+  return { t, off };
+}
+
+/** القبول يشمل كل رحلات الطلب، ويسحب العرض من باقي الناقلين */
 export function acceptTrip(ctx, tripId) {
   return tx(() => {
-    const t = carrierTrip(ctx, tripId);
+    const { t, off } = offerFor(ctx, tripId);
+    if (off && off.status !== 'pending') throw new HttpError(409, off.status === 'withdrawn' ? 'قبل ناقل آخر هذا الطلب' : 'لا يمكن قبول الطلب في حالته الحالية');
     if (t.status !== 'awaiting_acceptance') throw new HttpError(409, 'لا يمكن قبول الرحلة في حالتها الحالية');
-    if (t.accept_deadline && t.accept_deadline < now()) throw new HttpError(409, 'انتهت مهلة القبول');
-    setStatus(t, 'awaiting_assignment', ctx, {}, { accepted_at: now() });
+    const dl = off?.deadline || t.accept_deadline;
+    if (dl && dl < now()) { if (off) q.run("UPDATE order_offers SET status='expired' WHERE id = ?", off.id); throw new HttpError(409, 'انتهت مهلة القبول'); }
+    const sibs = q.all("SELECT * FROM trips WHERE order_id = ? AND status = 'awaiting_acceptance'", t.order_id);
+    for (const x of sibs) {
+      setStatus(x, 'awaiting_assignment', ctx, {}, { accepted_at: now(), carrier_id: ctx.companyId });
+      q.run("INSERT INTO assignment_history(trip_id,carrier_id,action,by_user) VALUES (?,?,'accepted',?)", x.id, ctx.companyId, ctx.userId);
+    }
+    if (off) {
+      q.run("UPDATE order_offers SET status='accepted', responded_at=?, responded_by=? WHERE id = ?", now(), ctx.userId, off.id);
+      q.run("UPDATE order_offers SET status='withdrawn', reason='قبل ناقل آخر' WHERE order_id = ? AND status = 'pending'", t.order_id);
+      const o = q.get('SELECT * FROM orders WHERE id = ?', t.order_id);
+      if (o.carrier_id !== ctx.companyId) {
+        const qj = JSON.parse(off.quote_json || '{}');
+        q.run('UPDATE orders SET carrier_id = ?, route_price_id = ?, price_snapshot_json = ?, transport_halalas = ? WHERE id = ?',
+          ctx.companyId, off.route_price_id, JSON.stringify({ ...qj, snapshot_at: now(), route_price_id: off.route_price_id }), qj.base_halalas, o.id);
+      }
+    }
     q.run("UPDATE orders SET status='accepted' WHERE id = ?", t.order_id);
-    q.run("INSERT INTO assignment_history(trip_id,carrier_id,action,by_user) VALUES (?,?,'accepted',?)", t.id, ctx.companyId, ctx.userId);
-    audit(ctx, 'trip.accept', 'trip', t.id);
-    notify(t.company_id, 'procurement', `قبل الناقل الرحلة ${t.number}`, ctx.companyName, `/trips/${t.id}`, `accepted:${t.id}`);
-    return { ok: true };
+    audit(ctx, 'trip.accept', 'trip', t.id, { order: t.order_id, trips: sibs.length });
+    notify(t.company_id, 'procurement', `قبل الناقل الطلب (${sibs.length} رحلة)`, ctx.companyName, `/trips/${t.id}`, `accepted:${t.order_id}`);
+    return { ok: true, trips: sibs.length };
   });
 }
 
+/** الرفض يخص هذا الناقل؛ يُرفض الطلب فقط عندما لا يبقى ناقل لم يرد */
 export function rejectTrip(ctx, tripId, reason) {
   if (!reason) throw new HttpError(400, 'سبب الرفض مطلوب');
   return tx(() => {
-    const t = carrierTrip(ctx, tripId);
-    if (t.status !== 'awaiting_acceptance') throw new HttpError(409, 'لا يمكن رفض الرحلة في حالتها الحالية');
-    setStatus(t, 'rejected', ctx, { note: reason }, { reject_reason: reason });
-    K.onTripReleased(t, { afterAcceptance: false });
-    q.run("UPDATE orders SET status='rejected' WHERE id = ?", t.order_id);
-    q.run("INSERT INTO assignment_history(trip_id,carrier_id,action,reason,by_user) VALUES (?,?,'rejected',?,?)", t.id, ctx.companyId, reason, ctx.userId);
-    notify(t.company_id, 'procurement', `رفض الناقل الرحلة ${t.number}`, reason, `/trips/${t.id}`, `rejected:${t.id}`);
-    return { ok: true };
+    const { t, off } = offerFor(ctx, tripId);
+    if (t.status !== 'awaiting_acceptance' || (off && off.status !== 'pending')) throw new HttpError(409, 'لا يمكن رفض الطلب في حالته الحالية');
+    if (off) q.run("UPDATE order_offers SET status='rejected', responded_at=?, responded_by=?, reason=? WHERE id = ?", now(), ctx.userId, reason, off.id);
+    const sibs = q.all("SELECT * FROM trips WHERE order_id = ? AND status = 'awaiting_acceptance'", t.order_id);
+    for (const x of sibs) q.run("INSERT INTO assignment_history(trip_id,carrier_id,action,reason,by_user) VALUES (?,?,'rejected',?,?)", x.id, ctx.companyId, reason, ctx.userId);
+    const left = q.get("SELECT COUNT(*) n FROM order_offers WHERE order_id = ? AND status = 'pending' AND (deadline IS NULL OR deadline >= ?)", t.order_id, now()).n;
+    if (!left) {
+      for (const x of sibs) { setStatus(x, 'rejected', ctx, { note: reason }, { reject_reason: reason }); K.onTripReleased(x, { afterAcceptance: false }); }
+      q.run("UPDATE orders SET status='rejected' WHERE id = ?", t.order_id);
+    }
+    notify(t.company_id, 'procurement', `رفض ${ctx.companyName} الطلب`, reason, `/trips/${t.id}`, `rejected:${t.order_id}:${ctx.companyId}`);
+    return { ok: true, order_rejected: !left };
   });
 }
 
@@ -301,7 +363,8 @@ export function assignTrip(ctx, tripId, { vehicle_id, driver_id }) {
     const t = carrierTrip(ctx, tripId);
     if (!['awaiting_assignment', 'assigned'].includes(t.status)) throw new HttpError(409, 'لا يمكن الإسناد في حالة الرحلة الحالية');
     const order = q.get('SELECT * FROM orders WHERE id = ?', t.order_id);
-    const v = eligibleVehicles(ctx.companyId, order.product, order.quantity_ml, t.planned_start, t.planned_end, t.id).find((x) => x.id === vehicle_id);
+    const tripMl = q.get('SELECT COALESCE(SUM(requested_ml),0) s FROM trip_stops WHERE trip_id = ?', t.id).s; // كمية هذه الرحلة (قد تكون جزءًا من طلب مقسّم)
+    const v = eligibleVehicles(ctx.companyId, order.product, tripMl, t.planned_start, t.planned_end, t.id).find((x) => x.id === vehicle_id);
     if (!v) throw new HttpError(404, 'المركبة غير موجودة');
     if (!v.eligible) throw new HttpError(409, `المركبة غير مؤهلة: ${v.reasons.join('، ')}`);
     const d = eligibleDrivers(ctx.companyId, t.planned_start, t.planned_end, t.id).find((x) => x.id === driver_id);
@@ -416,7 +479,7 @@ export function driverDeliverStop(ctx, tripId, stopId, body) {
     event(t.id, stop.id, 'stop_delivered', null, null, ctx, { client_op_id, lat, lng, captured_at, note: `${L(del)} لتر` });
     const remaining = nextPendingStop(t.id);
     const to = remaining ? 'to_delivery' : 'delivered';
-    if (to === 'delivered') K.onTripDelivered(t);
+    if (to === 'delivered') { K.onTripDelivered(t); F.onTripDelivered(t); }
     setStatus(t, to, ctx, { stop_id: stop.id }, to === 'delivered' ? { delivered_at: now() } : {});
     notify(t.company_id, 'site_receiver', `بانتظار تأكيد استلام ${t.number}`, `${L(del)} لتر`, `/trips/${t.id}`, `confirm:${stop.id}`);
     return { ok: true, next: to };
@@ -518,9 +581,10 @@ export function tripView(ctx, tripId) {
     WHERE t.id = ?`, tripId);
   if (!t) throw new HttpError(404, 'الرحلة غير موجودة');
   const isClient = t.company_id === ctx.companyId;
-  const isCarrier = t.carrier_id === ctx.companyId && ctx.companyType === 'carrier';
+  const myOffer = ctx.companyType === 'carrier' ? q.get('SELECT * FROM order_offers WHERE order_id = ? AND carrier_id = ?', t.order_id, ctx.companyId) : null;
+  const isCarrier = ctx.companyType === 'carrier' && (t.carrier_id === ctx.companyId || myOffer?.status === 'pending');
   const isDriver = ctx.role === 'driver' && t.driver_id === ctx.driverId;
-  const isAdmin = ctx.can('platform.admin');
+  const isAdmin = ctx.can('platform.view');
   if (!isClient && !isCarrier && !isDriver && !isAdmin) throw new HttpError(404, 'الرحلة غير موجودة');
   if (isClient && ctx.scopeProjectId && t.project_id !== ctx.scopeProjectId) throw new HttpError(404, 'الرحلة غير موجودة');
   const accepted = !['awaiting_acceptance', 'rejected'].includes(t.status);
@@ -536,10 +600,21 @@ export function tripView(ctx, tripId) {
     ...t, status_ar: TRIP_STATUS_AR[t.status], stops, photos, events, history,
     exceptions: isClient || isAdmin ? exceptions : [],
     missing_proofs: missingProofs(tripId),
-    price: (isClient || isCarrier || isAdmin) && ctx.can('price.view') || isAdmin ? JSON.parse(t.price_snapshot_json || 'null') : null,
+    price: (isClient || isCarrier) && ctx.can('price.view') || ctx.can('platform.finance') ? JSON.parse(t.price_snapshot_json || 'null') : null,
   };
   delete out.price_snapshot_json;
-  if (!(ctx.can('price.view') || isAdmin)) { out.transport_halalas = null; out.fuel_price_halalas_per_l = null; }
+  if (myOffer && t.carrier_id !== ctx.companyId && ctx.can('price.view')) out.price = JSON.parse(myOffer.quote_json || 'null');
+  out.offers = (isClient || isAdmin) ? q.all(`SELECT f.*, c.name_ar carrier_name, u.name responded_by_name FROM order_offers f JOIN companies c ON c.id = f.carrier_id LEFT JOIN users u ON u.id = f.responded_by WHERE f.order_id = ? ORDER BY f.sent_at`, t.order_id)
+    .map((f) => ({ ...f, status: f.status === 'pending' && f.deadline < now() ? 'expired' : f.status, quote: ctx.can('price.view') || ctx.can('platform.finance') ? JSON.parse(f.quote_json || 'null') : null, quote_json: undefined })) : [];
+  out.sibling_trips = q.all('SELECT id, number, status FROM trips WHERE order_id = ? ORDER BY number', t.order_id).map((x) => ({ ...x, status_ar: TRIP_STATUS_AR[x.status] }));
+  if (isClient || isAdmin) {
+    out.inventory = q.all(`SELECT m.id, m.kind, m.quantity_ml, m.tank_id, m.batch_id, m.effective_at, tk.code tank_code, b.mode FROM fuel_movements m LEFT JOIN tanks tk ON tk.id = m.tank_id LEFT JOIN fuel_batches b ON b.id = m.batch_id
+        WHERE m.ref_type = 'trip_stop' AND m.ref_id IN (SELECT id FROM trip_stops WHERE trip_id = ?) ORDER BY m.effective_at`, tripId);
+    out.fuelings = q.all(`SELECT f.id, f.number, f.quantity_ml, f.created_at, a.code asset_code, f.source_type FROM fuelings f JOIN assets a ON a.id = f.asset_id
+        WHERE f.status = 'approved' AND (f.trip_id = ? OR f.batch_id IN (SELECT b.id FROM fuel_batches b JOIN trip_stops s ON s.id = b.trip_stop_id WHERE s.trip_id = ?)) ORDER BY f.created_at`, tripId, tripId);
+    out.invoice = ctx.can('price.view') || ctx.can('platform.finance') ? q.get('SELECT number, total_halalas, paid_halalas, status FROM invoices WHERE trip_id = ?', tripId) : null;
+  }
+  if (!(ctx.can('price.view') || ctx.can('platform.finance'))) { out.transport_halalas = null; out.fuel_price_halalas_per_l = null; }
   if (isCarrier || isDriver) {
     out.fuel_price_halalas_per_l = null;
     if (!accepted) {
