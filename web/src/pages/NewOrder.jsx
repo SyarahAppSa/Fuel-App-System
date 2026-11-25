@@ -4,6 +4,7 @@ import { api, useApi, navigate, liters, sar, n, today, dOnly, dt, fail, toast, a
 import { Card, Field, Chip, Steps, Spinner, Alert, Empty, Modal, Meter } from '../ui.jsx';
 import { Title } from '../ctx.jsx';
 import { DocumentReview } from './Orders.jsx';
+import { Stars } from './Booking.jsx';
 
 const STEPS = [{ key: 'details', label: 'تفاصيل الطلب' }, { key: 'carrier', label: 'اختر شركة النقل' }, { key: 'summary', label: 'الملخص ومستند أرامكو' }];
 const QR_AR = { pending: 'بانتظار عرض السعر', quoted: 'وصل عرض السعر', declined: 'اعتذر عن التسعير', expired: 'انتهت صلاحية العرض', used: 'استُخدم' };
@@ -21,7 +22,8 @@ function CarrierCard({ c, onPick, onQuote, onFav, compare, onCompare, date }) {
     <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, borderColor: compare ? 'var(--brand)' : undefined, boxShadow: compare ? '0 0 0 3px var(--brand-soft)' : undefined }}>
       <div className="row" style={{ alignItems: 'flex-start' }}>
         <Logo name={c.name} url={c.logo_url} />
-        <div className="grow"><b style={{ fontSize: 16 }}>{c.name}</b><div className="tiny muted">{c.city}</div>
+        <div className="grow"><b style={{ fontSize: 16, cursor: 'pointer' }} onClick={() => navigate('/carriers/' + c.carrier_id)}>{c.name}</b> {c.project_priority && <Chip tone="good">مفضل #{c.project_priority} للمشروع</Chip>}
+          <div className="tiny muted">{c.city} · <Stars v={c.rating?.overall} count={c.rating?.count} size={11} /></div>
           <div className="row" style={{ gap: 4, marginTop: 6 }}>{c.loading.map((l) => <Chip key={l} tone="info">تحميل: {l}</Chip>)}{c.delivery.slice(0, 3).map((l) => <Chip key={l} tone="brand">تسليم: {l}</Chip>)}{c.delivery.length > 3 && <Chip>+{c.delivery.length - 3}</Chip>}</div></div>
         <button className="btn ghost sm" onClick={onFav} aria-label={c.favorite ? 'إزالة من المفضلين' : 'إضافة للمفضلين'} title={c.favorite ? 'من المفضلين' : 'أضف للمفضلين'}>
           <Star size={20} fill={c.favorite ? 'var(--gold, #e0a92a)' : 'none'} color={c.favorite ? '#c28a12' : 'var(--muted)'} /></button>
@@ -47,6 +49,7 @@ function CarrierCard({ c, onPick, onQuote, onFav, compare, onCompare, date }) {
           <div className="tiny muted">{c.trips_done} رحلة منفذة{c.sample ? ` · المؤشر من ${c.sample} رحلة` : ''}</div>
         </div>
       </div>
+      {p?.quote.terms && <div className="tiny muted">انتظار {sar(p.quote.terms.waiting_fee_halalas_per_hour)} ر.س/س بعد {p.quote.terms.free_waiting_hours} س مجانية · إلغاء {p.quote.terms.cancel_fee_halalas ? sar(p.quote.terms.cancel_fee_halalas) + ' ر.س بعد القبول' : 'بدون رسوم'} · يرد خلال {p.quote.terms.accept_within_minutes} د</div>}
       {c.package && <div className="small"><Package size={14} /> متاح من باقتك {c.package.number}: <b>{c.package.available}</b> رحلة مدفوعة مسبقًا</div>}
       <div className="row">
         <label className="row small" style={{ cursor: 'pointer' }}><input type="checkbox" checked={!!compare} onChange={onCompare} /> قارن</label>
@@ -60,7 +63,8 @@ function CarrierCard({ c, onPick, onQuote, onFav, compare, onCompare, date }) {
 }
 
 export function NewOrder() {
-  const reofferId = query().reoffer || null;
+  const qp = query();
+  const reofferId = qp.reoffer || null;
   const lookups = useApi('/lookups').data;
   const org = useApi('/org').data;
   const docs = useApi('/documents');
@@ -69,7 +73,7 @@ export function NewOrder() {
   const [d, setD] = useState({ loading_point_id: 'lp_ryd', product: 'diesel', date: today(1), window_start: '07:00', window_end: '15:00', fuel_price_per_liter: '1.66', stops: [{ site_id: '', mode: 'tank', tank_id: '', quantity_liters: '' }] });
   const [sort, setSort] = useState('price');
   const [favOnly, setFavOnly] = useState(false);
-  const [cmp, setCmp] = useState([]);
+  const [cmp, setCmp] = useState(qp.carrier ? [qp.carrier] : []);
   const [showCmp, setShowCmp] = useState(false);
   const [pick, setPick] = useState(null);
   const [doc, setDoc] = useState(null);
@@ -77,6 +81,12 @@ export function NewOrder() {
   const [busy, setBusy] = useState(false);
   const idem = useMemo(() => opId(), []);
 
+  useEffect(() => { // طلب لمشروع محدد: اختر أول موقع فيه وخزانه
+    if (!org || !qp.project || d.stops[0].site_id) return;
+    const s = org.sites.find((x) => x.project_id === qp.project); if (!s) return;
+    const t = org.tanks.find((x) => x.site_id === s.id && x.product === d.product);
+    setD((x) => ({ ...x, stops: [{ ...x.stops[0], site_id: s.id, tank_id: t?.id || '', mode: t ? 'tank' : 'direct' }] }));
+  }, [org]);
   useEffect(() => { // «اختر ناقلًا آخر»: نفس بيانات الطلب
     if (!ctxo.data) return; const o = ctxo.data;
     setD((x) => ({ ...x, loading_point_id: o.loading_point_id, product: o.product, date: o.date, window_start: o.window_start, window_end: o.window_end, stops: o.stops }));
@@ -151,7 +161,7 @@ export function NewOrder() {
             <span className="small muted">فرز:</span>
             {[['price', 'السعر'], ['earliest', 'أقرب موعد'], ['performance', 'الأداء']].map(([k, l]) => <button key={k} className={'btn sm ' + (sort === k ? 'primary' : '')} onClick={() => setSort(k)}>{l}</button>)}
             <button className={'btn sm ' + (favOnly ? 'primary' : '')} onClick={() => setFavOnly(!favOnly)}><Star size={14} /> المفضلون</button>
-            <button className="btn sm" disabled={cmp.length < 2} onClick={() => setShowCmp(true)}><Columns3 size={14} /> قارن ({cmp.length})</button>
+            <button className="btn sm" disabled={cmp.length < 2} onClick={() => setShowCmp(true)}><Columns3 size={14} /> قارن ({cmp.length}/3)</button>
           </div></div>
           {reofferId && ctxo.data && <div className="mb"><Alert tone="warn">{ctxo.data.offers.filter((f) => ['rejected', 'expired'].includes(f.status)).map((f) => `${f.name_ar}: ${f.status === 'rejected' ? 'اعتذر' + (f.reason ? ` (${f.reason})` : '') : 'انتهت مهلة رده'}`).join(' · ')} — الناقلون المعتذرون لا يظهرون في القائمة.</Alert></div>}
           {market.loading && !market.data ? <Spinner /> : market.error ? <Alert tone="bad">{market.error.message}</Alert> : (
@@ -159,14 +169,18 @@ export function NewOrder() {
               {market.data && !market.data.any_on_date && <div className="mb"><Alert tone="warn">لا يوجد ناقل متاح في {dOnly(d.date + 'T12:00:00Z')}. {market.data.earliest_overall ? <>أقرب موعد متاح: <b>{dOnly(market.data.earliest_overall + 'T12:00:00Z')}</b> <button className="btn sm" onClick={() => setD({ ...d, date: market.data.earliest_overall })}>اعتماد هذا الموعد</button></> : 'اطلب عرض سعر من الناقلين أدناه.'}</Alert></div>}
               {cards.length === 0 ? <Empty>{favOnly ? 'لا يوجد ناقل مفضل يخدم هذا المسار' : 'لا يوجد ناقل معتمد يخدم هذا المسار حاليًا'}</Empty> : (
                 <div className="grid g2">{cards.map((c) => <CarrierCard key={c.carrier_id} c={c} date={d.date} compare={cmp.includes(c.carrier_id)}
-                  onCompare={() => setCmp(cmp.includes(c.carrier_id) ? cmp.filter((x) => x !== c.carrier_id) : [...cmp, c.carrier_id].slice(-4))}
+                  onCompare={() => setCmp(cmp.includes(c.carrier_id) ? cmp.filter((x) => x !== c.carrier_id) : cmp.length >= 3 ? (toast('المقارنة حتى ثلاثة ناقلين — أزل واحدًا أولًا'), cmp) : [...cmp, c.carrier_id])}
                   onPick={(o) => choose(c, o)} onQuote={() => quote(c)} onFav={() => fav(c)} />)}</div>)}
             </>)}
           {showCmp && <Modal title="مقارنة عروض الناقلين" wide onClose={() => setShowCmp(false)}>
             {(() => { const sel = (market.data?.cards || []).filter((c) => cmp.includes(c.carrier_id)); const rows = [
               ['السعر الإجمالي', (c) => (c.price ? sar(c.price.quote.total_halalas) + ' ر.س' : 'يتطلب عرض سعر')], ['مصدر السعر', (c) => c.price?.label || '—'],
               ['أقرب موعد', (c) => (c.available ? 'في موعدك' : c.earliest_date ? dOnly(c.earliest_date + 'T12:00:00Z') : '—')], ['سعة الصهريج', (c) => (c.suitable_capacity_l ? n(c.suitable_capacity_l) + ' لتر' : '—')],
-              ['عدد الرحلات', (c) => c.trips_needed || '—'], ['رحلات منفذة عبر فيول آب', (c) => c.trips_done], ['الالتزام بالموعد', (c) => (c.on_time_pct == null ? 'لا توجد عينة' : `${c.on_time_pct}% (${c.sample} رحلة)`)],
+              ['عدد الرحلات', (c) => c.trips_needed || '—'],
+              ['رسوم الانتظار', (c) => (c.price?.quote.terms ? `${sar(c.price.quote.terms.waiting_fee_halalas_per_hour)} ر.س/ساعة بعد ${c.price.quote.terms.free_waiting_hours} ساعة مجانية` : '—')],
+              ['سياسة الإلغاء', (c) => (c.price?.quote.terms ? (c.price.quote.terms.cancel_fee_halalas ? `مجاني قبل القبول، ${sar(c.price.quote.terms.cancel_fee_halalas)} ر.س بعده` : 'بدون رسوم') : '—')],
+              ['مهلة رد الناقل', (c) => (c.price?.quote.terms ? `${c.price.quote.terms.accept_within_minutes} دقيقة` : '—')],
+              ['التقييم', (c) => <Stars v={c.rating?.overall} count={c.rating?.count} size={12} />], ['رحلات منفذة عبر فيول آب', (c) => c.trips_done], ['الالتزام بالموعد', (c) => (c.on_time_pct == null ? 'لا توجد عينة' : `${c.on_time_pct}% (${c.sample} رحلة)`)],
               ['التحميل', (c) => c.loading.join('، ')], ['التسليم', (c) => c.delivery.join('، ')]];
             return <div className="tscroll"><table className="t"><thead><tr><th></th>{sel.map((c) => <th key={c.carrier_id}><div className="row"><Logo name={c.name} url={c.logo_url} size={30} /> {c.name}</div></th>)}</tr></thead>
               <tbody>{rows.map(([l, f]) => <tr key={l}><td className="muted small">{l}</td>{sel.map((c) => <td key={c.carrier_id}>{f(c)}</td>)}</tr>)}
@@ -198,7 +212,8 @@ export function NewOrder() {
           </div>
           <Card title="السعر والإرسال">
             {finalQuote && <dl className="kv"><dt>أجرة النقل</dt><dd className="num">{sar(finalQuote.base_halalas)} ر.س</dd><dt>رسوم الخدمة</dt><dd className="num">{sar(finalQuote.platform_fee_halalas)}</dd><dt>ض.ق.م</dt><dd className="num">{sar(finalQuote.vat_halalas)}</dd>
-              <dt>الإجمالي</dt><dd className="price-big"><span className="num">{sar(finalQuote.total_halalas)}</span> ر.س</dd><dt>المصدر</dt><dd className="small">{pick.usePackage ? `باقة ${pick.package.number}` : pick.price.label}</dd></dl>}
+              <dt>الإجمالي</dt><dd className="price-big"><span className="num">{sar(finalQuote.total_halalas)}</span> ر.س</dd><dt>المصدر</dt><dd className="small">{pick.usePackage ? `باقة ${pick.package.number}` : pick.price.label}</dd>
+              {finalQuote.terms && <><dt>مهلة رد الناقل</dt><dd><Chip tone="info">{finalQuote.terms.accept_within_minutes} دقيقة من الإرسال</Chip></dd><dt>الانتظار والإلغاء</dt><dd className="small">{sar(finalQuote.terms.waiting_fee_halalas_per_hour)} ر.س/س بعد {finalQuote.terms.free_waiting_hours} س · إلغاء {finalQuote.terms.cancel_fee_halalas ? sar(finalQuote.terms.cancel_fee_halalas) + ' ر.س بعد القبول' : 'بدون رسوم'}</dd></>}</dl>}
             <Alert tone="info">يصل الطلب إلى <b>{pick.name}</b> وحده. إن اعتذر أو انتهت مهلة رده يظهر لك زر «اختر ناقلًا آخر» بنفس بيانات الطلب.</Alert>
             <button className="btn primary lg block mt" disabled={busy || (!reofferId && !doc)} onClick={send}><Send size={18} /> إرسال الطلب إلى {pick.name}</button>
           </Card>

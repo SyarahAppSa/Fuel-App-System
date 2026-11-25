@@ -29,6 +29,7 @@ import { AdminHome, AdminRecords, AdminCompanies, AdminCompany, AdminSearch, Adm
 import Receipt from './pages/Receipt.jsx';
 import Soon from './pages/Soon.jsx';
 import Contracts from './pages/Contracts.jsx';
+import { Carriers, CarrierProfile, ProjectPage, SitePage } from './pages/Booking.jsx';
 
 
 const CLIENT_NAV = [
@@ -36,6 +37,7 @@ const CLIENT_NAV = [
   { to: '/', label: 'نظرة عامة', icon: LayoutDashboard },
   { to: '/orders/new', label: 'طلبات النقل والتوريد', icon: FileText, cap: 'order.create' },
   { to: '/trips', label: 'الرحلات', icon: Truck, cap: 'order.view' },
+  { to: '/carriers', label: 'دليل الناقلين', icon: Building2, cap: ['order.create', 'order.view'] },
   { to: '/projects', label: 'المشاريع والمواقع', icon: MapPin, cap: 'asset.view' },
   { grp: 'الوقود والأصول' },
   { to: '/assets', label: 'المعدات والمركبات', icon: Tractor, cap: 'asset.view' },
@@ -69,11 +71,12 @@ function routes(me) {
     ['/admin/orders/:id', AdminOrder], ['/admin/reports', AdminReports], ['/admin/audit', AdminAudit], ['/admin/approvals', Admin], ['/trips', TripList], ['/trips/:id', TripDetail]];
   if (role === 'driver') return [['/', DriverHome], ['/trips/:id', DriverTrip]];
   if (t === 'carrier') return [['/', CarrierOverview], ['/trips', TripList], ['/trips/:id', TripDetail], ['/fleet', Fleet], ['/contracts', Contracts], ['/quotes', Quotes]];
-  if (role === 'site_receiver') return [['/', TripList], ['/trips', TripList], ['/trips/:id', TripDetail]];
+  if (role === 'site_receiver') return [['/', TripList], ['/trips', TripList], ['/trips/:id', TripDetail], ['/sites/:id', SitePage]];
   return [
     ['/', role === 'fuel_supervisor' ? FuelSession : Dashboard], ['/dashboard', Dashboard], ['/orders/new', NewOrder], ['/documents', Documents], ['/trips', TripList], ['/trips/:id', TripDetail],
     ['/projects', Projects], ['/assets', AssetList], ['/assets/:id', AssetReport], ['/nfc', NfcTags], ['/fuel', FuelSession], ['/fuel/log', FuelLog], ['/fuelings/:id', FuelingDetail],
     ['/tanks', Tanks], ['/tanks/:id', TankDetail], ['/approvals', Approvals], ['/reports', Reports], ['/settings', Settings], ['/contracts', Contracts], ['/finance', Soon],
+    ['/carriers', Carriers], ['/carriers/:id', CarrierProfile], ['/projects/:id', ProjectPage], ['/sites/:id', SitePage],
   ];
 }
 

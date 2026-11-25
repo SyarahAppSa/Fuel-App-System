@@ -27,11 +27,11 @@ export function Projects() {
         const pAssets = (assets.data || []).filter((a) => a.project_id === p.id);
         const low = pTanks.filter((t) => t.book_ml <= t.reorder_ml);
         return (
-          <Card key={p.id} title={<>{p.code} — {p.name}</>} actions={low.length ? <Chip tone="warn">نقص وقود: {low.map((t) => t.code).join('، ')}</Chip> : null}>
+          <Card key={p.id} title={<a href={'/projects/' + p.id} onClick={(e) => { e.preventDefault(); navigate('/projects/' + p.id); }}>{p.code} — {p.name}</a>} actions={<>{low.length ? <Chip tone="warn">نقص وقود: {low.map((t) => t.code).join('، ')}</Chip> : null}<button className="btn sm" onClick={() => navigate('/projects/' + p.id)}>صفحة المشروع</button></>}>
             <div className="grid g4">
               <div><div className="small muted">الميزانية اللترية</div>{p.budget_ml ? <><b className="num">{liters(used?.ml || 0)}</b> / <span className="num">{liters(p.budget_ml)}</span> لتر<div style={{ marginTop: 6 }}><Meter value={used?.ml || 0} max={p.budget_ml} /></div><div className="tiny muted" style={{ marginTop: 4 }}>المتاح {liters(p.budget_ml - (used?.ml || 0))} لتر</div></> : '—'}
                 {p.budget_halalas && can(me, 'price.view') ? <div className="tiny muted">الميزانية المالية {sar(p.budget_halalas)} ر.س · المصروف {sar(used?.cost || 0)}</div> : null}</div>
-              <div><div className="small muted">المواقع</div>{pSites.map((s) => <div key={s.id} className="small"><b>{s.name}</b> · {s.city}<div className="tiny muted">المستلم: {s.receiver_name} {s.receiver_phone}</div></div>)}</div>
+              <div><div className="small muted">المواقع</div>{pSites.map((s) => <div key={s.id} className="small" style={{ cursor: 'pointer' }} onClick={() => navigate('/sites/' + s.id)}><b style={{ color: 'var(--brand)' }}>{s.name}</b> · {s.city}<div className="tiny muted">المستلم: {s.receiver_name} {s.receiver_phone}</div></div>)}</div>
               <div><div className="small muted">الخزانات</div>{pTanks.map((t) => <div key={t.id} className="small" style={{ cursor: 'pointer' }} onClick={() => navigate('/tanks/' + t.id)}><b>{t.code}</b> <span className="num">{liters(t.book_ml)}</span> / {liters(t.capacity_ml)} لتر</div>)}{!pTanks.length && <span className="small muted">تزويد مباشر فقط</span>}</div>
               <div><div className="small muted">الرحلات القادمة ({pTrips.length})</div>{pTrips.slice(0, 4).map((t) => <div key={t.id} className="small" style={{ cursor: 'pointer' }} onClick={() => navigate('/trips/' + t.id)}><span className="num">{t.number}</span> · {t.status_ar}</div>)}
                 <div className="small muted" style={{ marginTop: 6 }}>المعدات النشطة: <b>{pAssets.filter((a) => a.status === 'active').length}</b></div></div>

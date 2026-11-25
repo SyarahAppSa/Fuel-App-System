@@ -2,6 +2,7 @@
 import { q, now, HttpError, L } from '../db.js';
 import { TRIP_STATUS_AR } from './trips.js';
 import { PRODUCTS } from './documents.js';
+import { ratingSummary } from './booking.js';
 
 /* ------------------------------------------------------------------ */
 /* الفلاتر                                                              */
@@ -402,6 +403,9 @@ export function companyProfile(ctx, id, f0) {
   if (c.type === 'carrier') {
     const deliveredWin = q.all(`SELECT t.delivered_at, t.window_end FROM trips t WHERE t.carrier_id = ? AND t.delivered_at IS NOT NULL AND t.window_end IS NOT NULL AND t.created_at BETWEEN ? AND ?`, id, f.from, f.to);
     out.on_time = { pct: deliveredWin.length ? Math.round(deliveredWin.filter((x) => x.delivered_at <= x.window_end).length / deliveredWin.length * 100) : null, sample: deliveredWin.length };
+    out.rating = ratingSummary(id);
+    out.performance = [['التسليم في الموعد', out.on_time.pct == null ? 'بيانات غير كافية' : out.on_time.pct, out.on_time.pct == null ? '' : `% من ${out.on_time.sample} رحلة`],
+      ['متوسط التقييم', out.rating.overall ?? 'لا توجد تقييمات', out.rating.overall == null ? '' : `من 5 (${out.rating.count} تقييم)`], ['الالتزام بالموعد (تقييم)', out.rating.on_time ?? '—', ''], ['التواصل (تقييم)', out.rating.communication ?? '—', ''], ['اكتمال التوثيق (تقييم)', out.rating.documentation ?? '—', '']];
     out.drivers = records('drivers.total', f).rows; out.vehicles = records('vehicles.total', f).rows;
     out.coverage = q.all("SELECT cc.kind, COALESCE(lp.name, cc.ref) label FROM carrier_coverage cc LEFT JOIN loading_points lp ON lp.id = cc.ref WHERE cc.carrier_id = ?", id);
     out.prices = q.all('SELECT rp.*, lp.name loading_point_name FROM route_prices rp JOIN loading_points lp ON lp.id = rp.loading_point_id WHERE rp.carrier_id = ?', id).map((p) => (fin ? p : { ...p, price_halalas: null }));

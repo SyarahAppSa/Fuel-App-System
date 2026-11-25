@@ -25,6 +25,8 @@ function migrate(d) {
   const cols = (t) => d.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name);
   const oc = cols('orders');
   for (const c of ['contract_id', 'contract_rate_id', 'package_id', 'reservation_id', 'quote_request_id']) if (!oc.includes(c)) d.exec(`ALTER TABLE orders ADD COLUMN ${c} TEXT`);
+  const sc = cols('sites');
+  for (const c of ['gate_lat REAL', 'gate_lng REAL', 'receiving_hours TEXT', 'receiving_days TEXT', 'access_updated_at TEXT', 'access_updated_by TEXT']) if (!sc.includes(c.split(' ')[0])) d.exec(`ALTER TABLE sites ADD COLUMN ${c}`);
   if (!cols('companies').includes('logo_file_id')) d.exec('ALTER TABLE companies ADD COLUMN logo_file_id TEXT');
 }
 

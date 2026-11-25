@@ -655,7 +655,7 @@ export function tripView(ctx, tripId) {
   if (!isClient && !isCarrier && !isDriver && !isAdmin) throw new HttpError(404, 'الرحلة غير موجودة');
   if (isClient && ctx.scopeProjectId && t.project_id !== ctx.scopeProjectId) throw new HttpError(404, 'الرحلة غير موجودة');
   const accepted = !['awaiting_acceptance', 'rejected'].includes(t.status);
-  const stops = q.all(`SELECT s.*, st.name site_name, st.city, st.lat, st.lng, tk.code tank_code, tk.name tank_name
+  const stops = q.all(`SELECT s.*, st.name site_name, st.city, st.lat, st.lng, st.gate_lat, st.gate_lng, st.receiving_hours, st.receiving_days, st.access_updated_at, tk.code tank_code, tk.name tank_name
       FROM trip_stops s JOIN sites st ON st.id = s.site_id LEFT JOIN tanks tk ON tk.id = s.tank_id WHERE s.trip_id = ? ORDER BY seq`, tripId);
   const photos = q.all('SELECT id, stop_id, kind, file_id, lat, lng, captured_at, received_at FROM trip_photos WHERE trip_id = ? ORDER BY captured_at', tripId);
   const events = q.all(`SELECT e.*, u.name actor_name FROM trip_events e LEFT JOIN users u ON u.id = e.actor_user_id WHERE trip_id = ? ORDER BY e.id`, tripId);
@@ -674,6 +674,10 @@ export function tripView(ctx, tripId) {
   out.offers = (isClient || isAdmin) ? q.all(`SELECT f.*, c.name_ar carrier_name, u.name responded_by_name FROM order_offers f JOIN companies c ON c.id = f.carrier_id LEFT JOIN users u ON u.id = f.responded_by WHERE f.order_id = ? ORDER BY f.sent_at`, t.order_id)
     .map((f) => ({ ...f, status: f.status === 'pending' && f.deadline < now() ? 'expired' : f.status, quote: ctx.can('price.view') || ctx.can('platform.finance') ? JSON.parse(f.quote_json || 'null') : null, quote_json: undefined })) : [];
   out.needs_carrier = isClient ? needsCarrier(t.order_id) : false;
+  out.counter = (isClient || isCarrier || isAdmin) ? q.get(`SELECT k.*, c.name_ar carrier_name FROM offer_counters k JOIN companies c ON c.id = k.carrier_id WHERE k.order_id = ? AND k.status IN ('pending','accepted','declined')`
+    + (isCarrier && !isClient ? ' AND k.carrier_id = ?' : '') + ' ORDER BY k.created_at DESC LIMIT 1', ...[t.order_id, isCarrier && !isClient ? ctx.companyId : null].filter(Boolean)) || null : null;
+  out.rating = q.get('SELECT * FROM trip_ratings WHERE trip_id = ?', t.id) || null;
+  out.can_rate = isClient && !out.rating && !!t.delivered_at && !q.get('SELECT 1 FROM trip_stops WHERE trip_id = ? AND receiver_ack IS NULL', t.id);
   out.sibling_trips = q.all('SELECT id, number, status FROM trips WHERE order_id = ? ORDER BY number', t.order_id).map((x) => ({ ...x, status_ar: TRIP_STATUS_AR[x.status] }));
   if (isClient || isAdmin) {
     out.inventory = q.all(`SELECT m.id, m.kind, m.quantity_ml, m.tank_id, m.batch_id, m.effective_at, tk.code tank_code, b.mode FROM fuel_movements m LEFT JOIN tanks tk ON tk.id = m.tank_id LEFT JOIN fuel_batches b ON b.id = m.batch_id

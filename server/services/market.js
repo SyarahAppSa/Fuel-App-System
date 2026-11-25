@@ -2,6 +2,7 @@
 import { q, tx, uid, now, nextNumber, audit, notify, HttpError, L, ML } from '../db.js';
 import { eligibleVehicles, eligibleDrivers, planWindow, quotePrice, quoteTrips, quoteFromRequest } from './trips.js';
 import * as K from './contracts.js';
+import { ratingSummary } from './booking.js';
 
 const addDays = (d, n) => new Date(new Date(d + 'T12:00:00Z').getTime() + n * 864e5).toISOString().slice(0, 10);
 
@@ -30,6 +31,8 @@ export function carrierCards(ctx, p) {
   const exclude = new Set(String(p.exclude || '').split(',').filter(Boolean));
   if (p.order_id) for (const r of q.all("SELECT carrier_id FROM order_offers WHERE order_id = ? AND status = 'rejected'", p.order_id)) exclude.add(r.carrier_id);
   const favs = new Set(q.all('SELECT carrier_id FROM favorite_carriers WHERE client_id = ?', ctx.companyId).map((r) => r.carrier_id));
+  const projectId = site?.project_id || p.project_id || null;
+  const pref = projectId ? Object.fromEntries(q.all('SELECT carrier_id, priority FROM preferred_carriers WHERE client_id = ? AND project_id = ?', ctx.companyId, projectId).map((x) => [x.carrier_id, x.priority])) : {};
   // الناقلون المعتمدون الذين يغطون نقطة التحميل ومدينة التسليم معًا
   const carriers = q.all(`SELECT c.* FROM companies c WHERE c.type = 'carrier' AND c.status = 'approved'
       AND EXISTS (SELECT 1 FROM carrier_coverage cc WHERE cc.carrier_id = c.id AND cc.kind = 'loading' AND cc.ref = ?)
@@ -40,7 +43,7 @@ export function carrierCards(ctx, p) {
     const coverage = q.all("SELECT cc.kind, COALESCE(lp.name, cc.ref) label FROM carrier_coverage cc LEFT JOIN loading_points lp ON lp.id = cc.ref WHERE cc.carrier_id = ?", c.id);
     const caps = q.all("SELECT capacity_ml, products FROM vehicles WHERE company_id = ? AND status = 'active'", c.id).filter((v) => v.products.split(',').includes(product)).map((v) => v.capacity_ml);
     const maxCap = caps.length ? Math.max(...caps) : 0;
-    const card = { carrier_id: c.id, name: c.name_ar, city: c.city, logo_url: c.logo_file_id ? `/api/public/logos/${c.id}` : null, favorite: favs.has(c.id),
+    const card = { carrier_id: c.id, name: c.name_ar, city: c.city, logo_url: c.logo_file_id ? `/api/public/logos/${c.id}` : null, favorite: favs.has(c.id), project_priority: pref[c.id] ?? null, rating: ratingSummary(c.id),
       loading: coverage.filter((x) => x.kind === 'loading').map((x) => x.label), delivery: coverage.filter((x) => x.kind === 'delivery').map((x) => x.label), ...performance(c.id) };
     if (!maxCap) return { ...card, available: false, earliest_date: null, reason: 'لا يملك صهاريج نشطة لهذا المنتج', price: null };
     const n = qty <= maxCap ? 1 : Math.ceil(qty / maxCap);
@@ -69,9 +72,10 @@ export function carrierCards(ctx, p) {
   const priceOf = (x) => (x.price ? x.price.quote.total_halalas : Infinity);
   const dateOf = (x) => x.earliest_date || '9999';
   const perfOf = (x) => (x.on_time_pct == null ? -1 : x.on_time_pct * 1000 + x.sample);
-  cards.sort((a, b) => sort === 'earliest' ? dateOf(a).localeCompare(dateOf(b)) || priceOf(a) - priceOf(b)
+  if (p.only) { const keep = new Set(String(p.only).split(',')); for (let i = cards.length - 1; i >= 0; i--) if (!keep.has(cards[i].carrier_id)) cards.splice(i, 1); }
+  cards.sort((a, b) => ((a.project_priority ?? 99) - (b.project_priority ?? 99)) || (sort === 'earliest' ? dateOf(a).localeCompare(dateOf(b)) || priceOf(a) - priceOf(b)
     : sort === 'performance' ? perfOf(b) - perfOf(a) || b.trips_done - a.trips_done
-      : priceOf(a) - priceOf(b) || dateOf(a).localeCompare(dateOf(b)));
+      : priceOf(a) - priceOf(b) || dateOf(a).localeCompare(dateOf(b))));
   const anyOnDate = cards.some((c) => c.available);
   const earliestOverall = cards.map((c) => c.earliest_date).filter(Boolean).sort()[0] || null;
   return { cards, city, quantity_l: L(qty), date: p.date, any_on_date: anyOnDate, earliest_overall: earliestOverall, excluded: [...exclude] };

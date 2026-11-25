@@ -689,3 +689,41 @@ CREATE TABLE IF NOT EXISTS favorite_carriers (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   PRIMARY KEY (client_id, carrier_id)
 );
+
+-- ========== الدفعة الأولى: تجربة الحجز ==========
+-- ترتيب الناقلين المفضلين لكل مشروع (المفضلون على مستوى الشركة في favorite_carriers)
+CREATE TABLE IF NOT EXISTS preferred_carriers (
+  client_id TEXT NOT NULL REFERENCES companies(id),
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  carrier_id TEXT NOT NULL REFERENCES companies(id),
+  priority INTEGER NOT NULL DEFAULT 1,
+  created_by TEXT,
+  PRIMARY KEY (client_id, project_id, carrier_id)
+);
+-- تقييم بعد رحلة موثقة ومؤكدة
+CREATE TABLE IF NOT EXISTS trip_ratings (
+  trip_id TEXT PRIMARY KEY REFERENCES trips(id),
+  client_id TEXT NOT NULL REFERENCES companies(id),
+  carrier_id TEXT NOT NULL REFERENCES companies(id),
+  on_time INTEGER NOT NULL CHECK (on_time BETWEEN 1 AND 5),
+  communication INTEGER NOT NULL CHECK (communication BETWEEN 1 AND 5),
+  documentation INTEGER NOT NULL CHECK (documentation BETWEEN 1 AND 5),
+  comment TEXT,
+  rated_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+-- عرض بديل من الناقل: موعد أو سعة مختلفة مع السعر؛ لا يُثبت الحجز إلا بقبول العميل
+CREATE TABLE IF NOT EXISTS offer_counters (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL REFERENCES orders(id),
+  carrier_id TEXT NOT NULL REFERENCES companies(id),
+  proposed_date TEXT,
+  window_start TEXT, window_end TEXT,
+  proposed_ml INTEGER,
+  price_halalas INTEGER NOT NULL,
+  note TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','declined','superseded')),
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  decided_by TEXT, decided_at TEXT, decision_note TEXT
+);

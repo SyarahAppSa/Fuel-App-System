@@ -13,6 +13,7 @@ import * as Con from './services/contracts.js';
 import * as Adm from './services/admin.js';
 import * as Fin from './services/finance.js';
 import * as Mk from './services/market.js';
+import * as Bk from './services/booking.js';
 import { hashPassword } from './auth.js';
 import { sampleAramcoPdf } from './samples.js';
 
@@ -258,6 +259,16 @@ export function createApp() {
   api.post('/documents/:id/approve', ...C, requireCap('order.create'), h((req) => docs.approveDocument(req.ctx, req.params.id, req.body)));
   api.get('/market/search', ...C, requireCap('order.create'), h((req) => trips.searchCarriers(req.query, req.ctx)));
   api.post('/orders', ...C, requireCap('order.create'), h((req) => trips.createOrder(req.ctx, req.body)));
+  // الدفعة الأولى: دليل الناقلين، ملف الناقل، المفضلون لكل مشروع، التقييم، العرض البديل، صفحات المشروع والموقع
+  api.get('/carriers', ...C, h((req) => Bk.carrierDirectory(req.ctx, req.query)));
+  api.get('/carriers/:id', ...C, h((req) => Bk.carrierProfile(req.ctx, req.params.id)));
+  api.put('/projects/:id/preferred-carriers', ...C, requireCap('order.create', 'org.manage'), h((req) => Bk.setProjectPreferred(req.ctx, req.params.id, req.body.carrier_ids)));
+  api.get('/projects/:id', ...C, h((req) => Bk.projectView(req.ctx, req.params.id)));
+  api.get('/sites/:id', ...C, h((req) => Bk.siteView(req.ctx, req.params.id)));
+  api.put('/sites/:id/access', ...C, requireCap('org.manage', 'inventory.manage', 'receipt.confirm'), h((req) => Bk.updateSiteAccess(req.ctx, req.params.id, req.body)));
+  api.post('/trips/:id/rating', ...C, requireCap('order.create', 'receipt.confirm', 'org.manage'), h((req) => Bk.rateTrip(req.ctx, req.params.id, req.body)));
+  api.post('/carrier/trips/:id/counter', requireAuth, requireCap('carrier.dispatch'), h((req) => Bk.proposeCounter(req.ctx, req.params.id, req.body)));
+  api.post('/counters/:id/:decision(accept|decline)', ...C, requireCap('order.create'), h((req) => Bk.decideCounter(req.ctx, req.params.id, req.params.decision === 'accept', req.body.note)));
   // «اختر شركة النقل»
   api.get('/market/carriers', ...C, requireCap('order.create'), h((req) => Mk.carrierCards(req.ctx, req.query)));
   api.post('/favorites/:carrierId', ...C, requireCap('order.create'), h((req) => Mk.setFavorite(req.ctx, req.params.carrierId, true)));
@@ -528,8 +539,9 @@ ${blocks.map((b) => b.kpis ? `<h2>${esc(b.title)}</h2><div class="kpis">${b.kpis
     const f = Adm.parseFilters(req.query); const r = Adm.companyReport(req.ctx, req.params.id, f);
     const p = r.profile; const note = filterNote({ ...f, company_id: null });
     audit(req.ctx, 'admin.export.company', 'company', req.params.id, { filters: req.query, format: req.query.format });
-    const kpiRows = p.groups.flatMap((g) => g.metrics.map((m) => ({ group: g.title, label: m.label, value: m.value ?? 'بيانات غير كافية', unit: m.unit || '' })));
-    if (req.query.format === 'pdf') return sendPrintable(res, `تقرير ${p.company.name_ar}`, note, [...p.groups.map((g) => ({ title: g.title, kpis: g.metrics.map((m) => [m.label, m.value, m.unit]) })), ...r.lists.map((l) => ({ title: l.label, columns: l.columns, rows: l.rows }))]);
+    const kpiRows = [...p.groups.flatMap((g) => g.metrics.map((m) => ({ group: g.title, label: m.label, value: m.value ?? 'بيانات غير كافية', unit: m.unit || '' }))),
+      ...(p.performance || []).map(([label, value, unit]) => ({ group: 'الأداء', label, value, unit }))];
+    if (req.query.format === 'pdf') return sendPrintable(res, `تقرير ${p.company.name_ar}`, note, [...p.groups.map((g) => ({ title: g.title, kpis: g.metrics.map((m) => [m.label, m.value, m.unit]) })), ...(p.performance ? [{ title: 'الأداء', kpis: p.performance }] : []), ...r.lists.map((l) => ({ title: l.label, columns: l.columns, rows: l.rows }))]);
     return sendXlsx(res, `fuelapp-${p.company.name_ar}`, [{ name: 'الملخص', title: `تقرير ${p.company.name_ar}`, note, columns: [['group', 'القسم'], ['label', 'المؤشر'], ['value', 'القيمة'], ['unit', 'الوحدة']], rows: kpiRows },
       ...r.lists.map((l) => ({ name: l.label, columns: l.columns, rows: l.rows }))]);
   }));

@@ -68,6 +68,15 @@ export async function seedDemo({ history = true } = {}) {
   for (const [k, r] of [['loading', 'lp_ryd'], ['delivery', 'الرياض']]) q.run('INSERT INTO carrier_coverage(id,carrier_id,kind,ref) VALUES (?,?,?,?)', uid('cov_'), 'co_car4', k, r);
   q.run("INSERT INTO company_documents(id,company_id,doc_type,number,expires_at,status) VALUES (?, 'co_car4', 'transport_license', '5503321', '2027-09-30', 'approved')", uid('cd_'));
 
+  // ---- ناقل ثالث بسعر منشور على مسار الرياض (للمقارنة بين ثلاثة) ----
+  company('co_car5', 'carrier', 'ناقلات اليمامة (تجريبي)', 'Yamamah Tankers (Demo)', 'الرياض');
+  member(user('carrier5@fuelapp.demo', 'تركي الشهري', '0557000001'), 'co_car5', 'carrier_admin');
+  const d5u = user('driver5@fuelapp.demo', 'ناصر البقمي', '0557000005'); member(d5u, 'co_car5', 'driver');
+  q.run("INSERT INTO drivers(id,company_id,user_id,name,phone,license_no,license_expiry) VALUES ('drv_9','co_car5',?,?,?,?,?)", d5u, 'ناصر البقمي', '0557000005', 'L-771230', '2028-04-01');
+  q.run("INSERT INTO vehicles(id,company_id,plate,capacity_ml,products,docs_valid_until) VALUES ('veh_9','co_car5','ي م م 5120',?, 'diesel', '2028-03-31')", ML(32000));
+  price('rp_c5_ryd', 'co_car5', 'lp_ryd', 'الرياض', 'diesel', 'fixed', 1520, 90, 400);
+  q.run("INSERT INTO company_documents(id,company_id,doc_type,number,expires_at,status) VALUES (?, 'co_car5', 'transport_license', '5509981', '2028-01-31', 'approved')", uid('cd_'));
+
   // ---- ناقل بانتظار الاعتماد ----
   company('co_car3', 'carrier', 'مؤسسة الجنوب للنقليات (تجريبي)', 'South Haulage (Demo)', 'أبها', 'pending');
   member(user('carrier3@fuelapp.demo', 'سعيد القرني'), 'co_car3', 'carrier_admin');
@@ -284,6 +293,20 @@ async function seedHistory({ ctx, admin, supervisor }) {
   void finance;
   await seedOps({ ctx, procure, admin, supervisor, receiver, driver1, driver2, dispatcher });
   normalizeTimes();
+  seedBooking();
+}
+
+/** بيانات تجربة الحجز: بطاقة دخول الموقع، مفضلو المشاريع، وتقييمات رحلات موثقة */
+function seedBooking() {
+  const at = new Date(Date.now() - 3 * 864e5).toISOString();
+  const recv = q.get("SELECT id FROM users WHERE email = 'client1@fuelapp.demo'")?.id;
+  q.run("UPDATE sites SET gate_lat = 24.30121, gate_lng = 47.18342, receiving_hours = '06:00 – 18:00', receiving_days = 'السبت – الخميس', access_updated_at = ?, access_updated_by = ? WHERE id = 'sit_1'", at, recv);
+  q.run("UPDATE sites SET gate_lat = 24.80455, gate_lng = 46.61210, receiving_hours = '07:00 – 16:00', receiving_days = 'الأحد – الخميس', access_updated_at = ?, access_updated_by = ? WHERE id = 'sit_2'", at, recv);
+  const pref = [['prj_1', 'co_car1', 1], ['prj_1', 'co_car2', 2], ['prj_2', 'co_car2', 1]];
+  for (const [pj, c, pr] of pref) if (q.get('SELECT 1 FROM companies WHERE id = ?', c)) q.run('INSERT OR IGNORE INTO preferred_carriers(client_id,project_id,carrier_id,priority,created_by) VALUES (?,?,?,?,?)', 'co_cli1', pj, c, pr, recv);
+  const done = q.all("SELECT t.id, t.carrier_id, t.company_id, t.delivered_at FROM trips t WHERE t.delivered_at IS NOT NULL AND t.accepted_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM trip_stops s WHERE s.trip_id = t.id AND s.receiver_ack IS NULL) ORDER BY t.delivered_at");
+  const marks = [[5, 5, 4, 'التزام ممتاز وتوثيق كامل'], [4, 5, 5, null], [5, 4, 4, 'السائق تواصل قبل الوصول'], [3, 4, 5, null]];
+  done.forEach((t, i) => { const m = marks[i % marks.length]; q.run('INSERT OR IGNORE INTO trip_ratings(trip_id,client_id,carrier_id,on_time,communication,documentation,comment,rated_by,created_at) VALUES (?,?,?,?,?,?,?,?,?)', t.id, t.company_id, t.carrier_id, m[0], m[1], m[2], m[3], recv, t.delivered_at); });
 }
 
 /** يزيح كل أوقات طلب ورحلاته وعروضه وفواتيره بعدد ثوانٍ (لبيانات تاريخية متسقة) */

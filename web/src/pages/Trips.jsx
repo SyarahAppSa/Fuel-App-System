@@ -3,6 +3,43 @@ import { Printer, Check, X, UserCheck, Link2, Ban, Camera, MapPin, Truck, AlertT
 import { api, useApi, navigate, liters, sar, dt, ago, fail, toast, query, auth, PRODUCTS, TRIP_TONE, EXC_TYPE } from '../lib.js';
 import { Card, Chip, Spinner, Empty, Modal, Field, Alert, Steps } from '../ui.jsx';
 import { Title, useMe, can } from '../ctx.jsx';
+import { Stars } from './Booking.jsx';
+import { Repeat, Star as StarI, Navigation, Clock } from 'lucide-react';
+
+function CounterModal({ trip, onClose, onDone }) {
+  const single = (trip.sibling_trips?.length || 1) === 1 && trip.stops.length === 1;
+  const submit = async (e) => { e.preventDefault(); const b = Object.fromEntries(new FormData(e.target)); for (const k of Object.keys(b)) if (b[k] === '') delete b[k];
+    try { await api(`/carrier/trips/${trip.id}/counter`, { method: 'POST', body: b }); toast('أُرسل العرض البديل للعميل — القرار له'); onDone(); } catch (err) { fail(err); } };
+  return <Modal title="اقتراح عرض بديل" onClose={onClose}><form className="stack" onSubmit={submit}>
+    <Alert tone="info">اقترح موعدًا آخر أو سعة أقل مع سعر النقل. لا يتغير شيء قبل موافقة العميل.</Alert>
+    <div className="grid g3"><Field label="الموعد المقترح"><input type="date" name="date" className="input" /></Field><Field label="من"><input type="time" name="window_start" className="input" /></Field><Field label="إلى"><input type="time" name="window_end" className="input" /></Field></div>
+    {single && <Field label="سعة أقل (لتر)" hint={`المطلوب ${liters(trip.quantity_ml)} لتر`}><input type="number" name="liters" className="input" /></Field>}
+    <Field label="سعر النقل (ر.س قبل الخدمة والضريبة)"><input type="number" step="0.01" name="price_sar" className="input" required /></Field>
+    <Field label="ملاحظة للعميل"><input name="note" className="input" /></Field>
+    <button className="btn primary">إرسال العرض البديل</button></form></Modal>;
+}
+
+function RatingCard({ trip, onDone }) {
+  const [v, setV] = useState({ on_time: 0, communication: 0, documentation: 0 });
+  const [comment, setComment] = useState('');
+  const send = async () => { try { await api(`/trips/${trip.id}/rating`, { method: 'POST', body: { ...v, comment } }); toast('شكرًا — سُجّل التقييم في ملف الناقل'); onDone(); } catch (e) { fail(e); } };
+  return <Card title={`قيّم ${trip.carrier_name}`} icon={<StarI size={17} color="#c28a12" />}>
+    {[['on_time', 'الالتزام بالموعد'], ['communication', 'التواصل'], ['documentation', 'اكتمال التوثيق']].map(([k, l]) => <div key={k} className="row mb"><span className="grow small">{l}</span>
+      {[1, 2, 3, 4, 5].map((i) => <button key={i} type="button" className="btn ghost sm" style={{ padding: 2 }} aria-label={`${l} ${i}`} data-rate={`${k}-${i}`} onClick={() => setV({ ...v, [k]: i })}><StarI size={22} fill={v[k] >= i ? '#e0a92a' : 'none'} color={v[k] >= i ? '#c28a12' : 'var(--line-2)'} /></button>)}</div>)}
+    <input className="input mb" placeholder="تعليق (اختياري)" value={comment} onChange={(e) => setComment(e.target.value)} />
+    <button className="btn primary block" disabled={!v.on_time || !v.communication || !v.documentation} onClick={send}>إرسال التقييم</button>
+    <div className="tiny muted mt">التقييم متاح مرة واحدة بعد التسليم وتأكيد المستلم.</div></Card>;
+}
+
+export function SiteAccess({ s }) {
+  const pin = s.gate_lat ? `https://www.google.com/maps/dir/?api=1&destination=${s.gate_lat},${s.gate_lng}` : null;
+  if (!pin && !s.receiving_hours && !s.access_notes) return null;
+  return <div className="card" style={{ padding: 12, background: 'var(--surface-2)', marginBottom: 10 }}>
+    <div className="row small" style={{ fontWeight: 700 }}><MapPin size={14} /> بطاقة دخول الموقع<div className="grow" />{s.access_updated_at && <span className="tiny muted">آخر تحديث {dt(s.access_updated_at)}</span>}</div>
+    <div className="row small mt" style={{ gap: 8 }}>{pin && <a className="btn sm primary" href={pin} target="_blank" rel="noreferrer"><Navigation size={14} /> الملاحة لبوابة الموقع</a>}
+      {s.receiving_hours && <Chip tone="info"><Clock size={12} /> الاستلام {s.receiving_hours}{s.receiving_days ? ` · ${s.receiving_days}` : ''}</Chip>}</div>
+    {s.access_notes && <div className="small mt">{s.access_notes}</div>}</div>;
+}
 
 const FLOW = [['assigned', 'مسندة'], ['to_loading', 'للتحميل'], ['at_loading', 'عند التحميل'], ['loaded', 'تم التحميل'], ['to_delivery', 'للتسليم'], ['at_site', 'في الموقع'], ['delivered', 'تم التسليم'], ['closed', 'مغلقة']];
 const ORDER = ['awaiting_acceptance', 'awaiting_assignment', ...FLOW.map((f) => f[0])];
@@ -110,6 +147,7 @@ export function TripDetail({ id }) {
         <div className="grow" />
         {isCarrier && t.status === 'awaiting_acceptance' && can(me, 'carrier.dispatch') && <>
           <button className="btn primary" onClick={() => act(`/carrier/trips/${t.id}/accept`, {}, 'تم قبول الرحلة')}><Check size={16} /> قبول</button>
+          <button className="btn" onClick={() => setModal({ type: 'counter' })}><Repeat size={16} /> عرض بديل</button>
           <button className="btn danger" onClick={() => { const reason = prompt('سبب الرفض'); if (reason) act(`/carrier/trips/${t.id}/reject`, { reason }, 'تم الرفض'); }}><X size={16} /> رفض</button></>}
         {isCarrier && ['awaiting_assignment', 'assigned'].includes(t.status) && <button className="btn primary" onClick={() => setModal({ type: 'assign' })}><UserCheck size={16} /> {t.vehicle_id ? 'إعادة الإسناد' : 'إسناد مركبة وسائق'}</button>}
         {isClient && can(me, 'order.create') && ['awaiting_acceptance', 'awaiting_assignment', 'assigned'].includes(t.status) &&
@@ -120,6 +158,12 @@ export function TripDetail({ id }) {
       {t.needs_carrier && <div className="mb"><Alert tone="bad"><div className="row"><span className="grow"><b>{t.offers.find((f) => f.status === 'rejected' && f.carrier_id === t.carrier_id) ? `اعتذر ${t.carrier_name} عن الطلب` : `انتهت مهلة رد ${t.carrier_name}`}</b>{t.offers.find((f) => f.carrier_id === t.carrier_id)?.reason ? ` — ${t.offers.find((f) => f.carrier_id === t.carrier_id).reason}` : ''}. يمكنك إرسال الطلب نفسه لناقل آخر.</span>
         {can(me, 'order.create') && <button className="btn primary" onClick={() => navigate('/orders/new?reoffer=' + t.order_id)}>اختر ناقلًا آخر</button>}</div></Alert></div>}
       {isClient && !t.needs_carrier && t.status === 'awaiting_acceptance' && <div className="mb"><Alert tone="info">أُرسل الطلب إلى <b>{t.carrier_name}</b> وحده — بانتظار رده حتى {dt(t.offers.find((f) => f.carrier_id === t.carrier_id && f.status === 'pending')?.deadline || t.accept_deadline)}.</Alert></div>}
+      {t.counter && t.counter.status === 'pending' && <div className="mb"><Alert tone="warn"><div className="row"><span className="grow"><b>عرض بديل من {t.counter.carrier_name}:</b>{' '}
+        {[t.counter.proposed_date && `موعد ${t.counter.proposed_date}${t.counter.window_start ? ` ${t.counter.window_start}–${t.counter.window_end}` : ''}`, t.counter.proposed_ml && `سعة ${liters(t.counter.proposed_ml)} لتر بدل ${liters(t.quantity_ml)}`, `أجرة ${sar(t.counter.price_halalas)} ر.س قبل الخدمة والضريبة`].filter(Boolean).join(' · ')}
+        {t.counter.note && <span className="muted"> — {t.counter.note}</span>}{isCarrier && <span className="muted"> — بانتظار قرار العميل</span>}</span>
+        {isClient && can(me, 'order.create') && <><button className="btn primary" onClick={() => act(`/counters/${t.counter.id}/accept`, {}, 'قُبل العرض البديل — الرحلة بانتظار الإسناد')}><Check size={16} /> قبول البديل</button>
+          <button className="btn" onClick={() => act(`/counters/${t.counter.id}/decline`, {}, 'رُفض العرض البديل')}>رفض</button></>}</div></Alert></div>}
+      {t.counter && t.counter.status !== 'pending' && <div className="mb"><Alert tone={t.counter.status === 'accepted' ? 'good' : 'info'}>العرض البديل من {t.counter.carrier_name}: {t.counter.status === 'accepted' ? 'قبله العميل' : 'رفضه العميل'} · {dt(t.counter.decided_at)}</Alert></div>}
       {t.status === 'under_review' && <Alert tone="bad">الرحلة بانتظار المراجعة: {t.exceptions.filter((e) => e.status === 'open').map((e) => e.title).join('، ')} — <a href="/approvals" onClick={(e) => { e.preventDefault(); navigate('/approvals'); }} style={{ textDecoration: 'underline' }}>الموافقات</a></Alert>}
       {t.missing_proofs.length > 0 && ['delivered', 'under_review', 'closed'].includes(t.status) && <Alert tone="warn">إثباتات ناقصة: {t.missing_proofs.map((m) => PHOTO[m.kind] + (m.seq ? ` (نقطة ${m.seq})` : '')).join('، ')}</Alert>}
 
@@ -139,10 +183,10 @@ export function TripDetail({ id }) {
                 <Chip tone={s.mode === 'direct' ? 'brand' : 'info'}>{s.mode === 'direct' ? 'تزويد مباشر' : `خزان ${s.tank_code || ''}`}</Chip>
                 <Chip tone={{ confirmed: 'good', disputed: 'bad', delivered: 'warn' }[s.status]}>{{ pending: 'لم يصل', arrived: 'وصل', delivered: 'بانتظار التأكيد', confirmed: 'مؤكد', disputed: 'معترض' }[s.status]}</Chip>
               </>}>
+              {(isCarrier || isClient) && s.receiver_name && <SiteAccess s={s} />}
               <div className="grid g2 mb">
                 <dl className="kv"><dt>المطلوبة</dt><dd className="num">{liters(s.requested_ml)} لتر</dd><dt>المسلّمة</dt><dd><span className="num">{liters(s.delivered_ml)}</span> {s.measure_method && <span className="tiny muted">({s.measure_method})</span>}</dd>{s.returned_ml ? <><dt>المرتجعة</dt><dd className="num">{liters(s.returned_ml)}</dd></> : null}</dl>
                 <dl className="kv"><dt>المستلم</dt><dd>{s.receiver_name || <span className="muted small">يظهر بعد القبول</span>} <span className="tiny muted">{s.receiver_phone}</span></dd>
-                  {s.access_notes && <><dt>الدخول</dt><dd className="small">{s.access_notes}</dd></>}
                   {s.receiver_ack && <><dt>التأكيد</dt><dd className="small">{s.receiver_ack === 'confirmed' ? 'مؤكد' : 'معترض'} — {s.receiver_ack_by} · {dt(s.receiver_ack_at)}{s.receiver_note && <div className="muted">{s.receiver_note}</div>}</dd></>}</dl>
               </div>
               <div className="photos" style={{ gridTemplateColumns: 'repeat(2,1fr)' }}>{photoCard('before_unloading', s.id)}{photoCard('after_unloading', s.id)}</div>
@@ -155,6 +199,8 @@ export function TripDetail({ id }) {
           ))}
         </div>
         <div className="stack">
+          {isClient && t.can_rate && <RatingCard trip={t} onDone={r.reload} />}
+          {t.rating && <Card title="تقييم الرحلة"><div className="grid g3">{[['الموعد', t.rating.on_time], ['التواصل', t.rating.communication], ['التوثيق', t.rating.documentation]].map(([l, v]) => <div key={l}><div className="tiny muted">{l}</div><Stars v={v} size={12} /></div>)}</div>{t.rating.comment && <div className="small mt">«{t.rating.comment}»</div>}</Card>}
           <div id="order"><Card title={`الطلب الأصلي ${t.order_number}`}>
             <dl className="kv"><dt>أنشأه</dt><dd>{t.order_created_by || '—'}</dd><dt>وقت الطلب</dt><dd>{dt(t.order_created_at)}</dd>
               <dt>الكمية المطلوبة</dt><dd className="num">{liters(t.quantity_ml)} لتر</dd><dt>المشروع</dt><dd>{t.project_name || '—'}</dd>
@@ -189,6 +235,7 @@ export function TripDetail({ id }) {
         </div>
       </div>
       {modal?.type === 'assign' && <AssignModal trip={t} onClose={() => setModal(null)} onDone={() => { setModal(null); r.reload(); }} />}
+      {modal?.type === 'counter' && <CounterModal trip={t} onClose={() => setModal(null)} onDone={() => { setModal(null); r.reload(); }} />}
       {modal?.type === 'confirm' && <ConfirmModal trip={t} stop={modal.stop} onClose={() => setModal(null)} onDone={() => { setModal(null); r.reload(); }} />}
     </>
   );
