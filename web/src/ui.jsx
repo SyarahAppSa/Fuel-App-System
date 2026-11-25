@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { X, Loader2, Nfc, Radio, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
-import { setToaster, liters, n } from './lib.js';
+import { setToaster, liters, n, PALETTES, getPalette, applyPalette } from './lib.js';
 
 export function Card({ title, actions, children, flush, className = '', icon }) {
   return (
@@ -157,6 +157,19 @@ export function NfcReader({ onRead, demoTags = [], label = 'اقرأ شريحة 
           <button className="btn sm">قراءة</button>
         </form>
       </div>
+    </div>
+  );
+}
+
+/** اختيار لوحة ألوان المنصة — يطبَّق فورًا ويُحفظ في المتصفح */
+export function PalettePicker({ label = true }) {
+  const [cur, setCur] = useState(getPalette());
+  return (
+    <div>
+      {label && <div className="tiny muted" style={{ textAlign: 'center', marginBottom: 4 }}>ألوان المنصة: {PALETTES.find((p) => p.key === cur)?.label}</div>}
+      <div className="palette-pick">{PALETTES.map((p) => (
+        <button key={p.key} className={cur === p.key ? 'on' : ''} title={p.label} aria-label={'لوحة ' + p.label}
+          style={{ background: `linear-gradient(135deg, ${p.swatch[0]} 50%, ${p.swatch[1]} 50%)` }} onClick={() => setCur(applyPalette(p.key))} />))}</div>
     </div>
   );
 }

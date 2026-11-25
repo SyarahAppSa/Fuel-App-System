@@ -91,3 +91,19 @@ export function getPosition() {
     navigator.geolocation.getCurrentPosition((p) => res({ lat: p.coords.latitude, lng: p.coords.longitude }), () => res({}), { timeout: 3000, maximumAge: 60000 });
   });
 }
+
+/* ---------------- لوحة الألوان ---------------- */
+export const PALETTES = [
+  { key: 'royal', label: 'الملكي (الحالي)', swatch: ['#1a1db5', '#05096e'], meta: '#000098' },
+  { key: 'petrol', label: 'البترولي', swatch: ['#0f7686', '#e8900c'], meta: '#0a5562' },
+  { key: 'emerald', label: 'الزمردي', swatch: ['#0f7a4f', '#b8860b'], meta: '#0a5c3b' },
+  { key: 'graphite', label: 'الفحمي', swatch: ['#ea580c', '#1b1e24'], meta: '#1b1e24' },
+];
+export function getPalette() { try { return localStorage.getItem('hj_palette') || 'royal'; } catch { return 'royal'; } }
+export function applyPalette(key) {
+  const p = PALETTES.find((x) => x.key === key) || PALETTES[0];
+  if (p.key === 'royal') delete document.documentElement.dataset.palette; else document.documentElement.dataset.palette = p.key;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', p.meta);
+  try { localStorage.setItem('hj_palette', p.key); } catch {}
+  return p.key;
+}

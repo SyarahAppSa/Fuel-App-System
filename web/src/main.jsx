@@ -6,8 +6,9 @@ import {
   Building2, Menu, Bell, LogOut, Users, Route, ShieldCheck, ClipboardCheck, Crown, Headset, UserCog,
 } from 'lucide-react';
 import './styles.css';
-import { api, auth, usePath, navigate, match, useApi, ago, demoEnter, fail } from './lib.js';
-import { Toaster, Spinner } from './ui.jsx';
+import { api, auth, usePath, navigate, match, useApi, ago, demoEnter, fail, applyPalette, getPalette } from './lib.js';
+applyPalette(getPalette());
+import { Toaster, Spinner, PalettePicker } from './ui.jsx';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import { NewOrder, Documents } from './pages/Orders.jsx';
@@ -104,6 +105,7 @@ function Shell({ me, reloadMe, openDemo }) {
             ))}
           </nav>
           <div className="foot">
+            <PalettePicker />
             {me.company.type === 'client' && <button className="pill" onClick={() => navigate('/contracts')}><Crown size={17} /> العقود والباقات</button>}
             <a className="pill" href="mailto:support@fuelapp.demo"><Headset size={17} /> الدعم والمساعدة</a>
           </div>

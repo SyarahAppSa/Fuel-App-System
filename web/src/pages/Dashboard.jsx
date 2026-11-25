@@ -55,7 +55,7 @@ export default function Dashboard() {
           <div className="main-bal" style={{ cursor: 'pointer' }} onClick={() => navigate('/tanks')}>
             <div className="bub"><Droplets size={32} /></div>
             <div><div className="lbl">الرصيد الإجمالي للوقود</div><div className="big"><span className="num">{liters(totalBalance)}</span><small>لتر</small></div>
-              <div className="tiny" style={{ color: '#cdd3f6' }}>خزانات + دفعات تزويد مباشر</div></div>
+              <div className="tiny" style={{ color: 'var(--on-dark-soft)' }}>خزانات + دفعات تزويد مباشر</div></div>
           </div>
           <div className="col">
             <div className="sub" onClick={() => navigate('/tanks')}><div className="bub sm"><Container size={24} /></div><div><div className="t">مخزون الخزانات</div><div className="mid"><span className="num">{liters(d.stock_ml)}</span><small>لتر</small></div></div></div>
