@@ -314,7 +314,8 @@ export function orderResponsibility(orderId, nowIso) {
     return { stuck_at: waiting.some((f) => f.deadline >= nowIso) ? 'بانتظار رد الناقل' : 'انتهت مهلة رد كل الناقلين', responsible: (resp || 'لا يوجد ناقل بانتظار الرد') + ' · متابعة: عمليات فيول آب', follow_up: followUp('order', orderId)?.assignee || null, since: o.created_at };
   }
   const t = q.get(`SELECT t.*, ca.name_ar carrier_name, cl.name_ar client_name, d.name driver_name, d.phone driver_phone FROM trips t JOIN companies ca ON ca.id = t.carrier_id JOIN companies cl ON cl.id = t.company_id LEFT JOIN drivers d ON d.id = t.driver_id
-      WHERE t.order_id = ? AND t.status NOT IN ('closed','cancelled','rejected') ORDER BY (t.planned_end < ?) DESC, t.number LIMIT 1`, orderId, nowIso);
+      WHERE t.order_id = ? AND t.status NOT IN ('closed','cancelled','rejected')
+      ORDER BY (t.status IN ${ACTIVE_EXEC} AND t.planned_end < ?) DESC, (t.status IN ${ACTIVE_EXEC}) DESC, t.number LIMIT 1`, orderId, nowIso); // الرحلة المتأخرة أولًا
   if (!t) return { stuck_at: ORDER_AR[o.status], responsible: '—', follow_up: followUp('order', orderId)?.assignee || null, since: o.created_at };
   const r = tripResponsibility(t, nowIso);
   return { ...r, stuck_at: `${t.number}: ${r.stuck_at}`, follow_up: followUp('order', orderId)?.assignee || r.follow_up };
