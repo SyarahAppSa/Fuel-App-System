@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
-import { q, tx, uid, now, audit, HttpError, ROOT, L, ML } from './db.js';
+import { q, tx, uid, now, audit, notify, HttpError, ROOT, L, ML } from './db.js';
 import { authMiddleware, requireAuth, requireCap, verifyPassword, createSession, ROLE_LABELS, ROLE_CAPS, projectScope } from './auth.js';
 import * as trips from './services/trips.js';
 import * as inv from './services/inventory.js';
@@ -12,6 +12,8 @@ import * as rep from './services/reports.js';
 import * as Con from './services/contracts.js';
 import * as Adm from './services/admin.js';
 import * as Fin from './services/finance.js';
+import * as Mk from './services/market.js';
+import { hashPassword } from './auth.js';
 import { sampleAramcoPdf } from './samples.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
@@ -32,6 +34,30 @@ export function createApp() {
   api.get('/demo-accounts', h(() => q.all(`SELECT u.email, u.name, m.role, c.name_ar company, c.type FROM memberships m JOIN users u ON u.id = m.user_id JOIN companies c ON c.id = m.company_id
       WHERE c.is_demo = 1 ORDER BY c.type, c.name_ar, m.role`).map((r) => ({ ...r, role_ar: ROLE_LABELS[r.role] }))));
 
+  // تسجيل شركة نقل جديدة (تبقى بانتظار اعتماد إدارة فيول آب)
+  api.post('/public/register', h((req) => {
+    const b = req.body || {};
+    const email = String(b.email || '').toLowerCase().trim();
+    if (!b.company_name || !b.admin_name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || String(b.password || '').length < 8) throw new HttpError(400, 'أكمل اسم الشركة واسم المسؤول وبريدًا صحيحًا وكلمة مرور من 8 أحرف على الأقل');
+    if (q.get('SELECT 1 FROM users WHERE email = ?', email)) throw new HttpError(409, 'البريد مسجل مسبقًا');
+    return tx(() => {
+      const cid = uid('co_'); const usr = uid('usr_');
+      q.run("INSERT INTO companies(id,type,name_ar,city,cr_number,status,is_demo) VALUES (?, 'carrier', ?, ?, ?, 'pending', 1)", cid, b.company_name.trim(), b.city || null, b.cr_number || null);
+      q.run('INSERT INTO users(id,name,email,phone,password_hash) VALUES (?,?,?,?,?)', usr, b.admin_name.trim(), email, b.phone || null, hashPassword(String(b.password)));
+      q.run("INSERT INTO memberships(id,user_id,company_id,role) VALUES (?,?,?,'carrier_admin')", uid('mem_'), usr, cid);
+      if (b.cr_number) q.run("INSERT INTO company_documents(id,company_id,doc_type,number,status) VALUES (?, ?, 'cr', ?, 'pending')", uid('cd_'), cid, b.cr_number);
+      audit({ userId: usr, companyId: cid, role: 'carrier_admin' }, 'company.register', 'company', cid);
+      notify('co_fuelapp', null, `تسجيل ناقل جديد: ${b.company_name}`, 'بانتظار الاعتماد', '/admin/approvals', `reg:${cid}`);
+      return { ok: true, company_id: cid, status: 'pending' };
+    });
+  }));
+  api.get('/public/logos/:id', h((req, res) => {
+    const c = q.get('SELECT logo_file_id FROM companies WHERE id = ?', req.params.id);
+    const f = c?.logo_file_id && q.get('SELECT * FROM files WHERE id = ?', c.logo_file_id);
+    if (!f) throw new HttpError(404, 'لا يوجد شعار');
+    res.setHeader('Content-Type', f.mime); res.setHeader('Cache-Control', 'public, max-age=3600');
+    fs.createReadStream(path.join(process.env.FUELAPP_UPLOADS || path.join(ROOT, 'uploads'), f.storage_path)).pipe(res);
+  }));
   api.post('/auth/login', h((req) => {
     const { email, password, membership_id } = req.body || {};
     const u = q.get('SELECT * FROM users WHERE email = ?', String(email || '').toLowerCase().trim());
@@ -232,6 +258,25 @@ export function createApp() {
   api.post('/documents/:id/approve', ...C, requireCap('order.create'), h((req) => docs.approveDocument(req.ctx, req.params.id, req.body)));
   api.get('/market/search', ...C, requireCap('order.create'), h((req) => trips.searchCarriers(req.query, req.ctx)));
   api.post('/orders', ...C, requireCap('order.create'), h((req) => trips.createOrder(req.ctx, req.body)));
+  // «اختر شركة النقل»
+  api.get('/market/carriers', ...C, requireCap('order.create'), h((req) => Mk.carrierCards(req.ctx, req.query)));
+  api.post('/favorites/:carrierId', ...C, requireCap('order.create'), h((req) => Mk.setFavorite(req.ctx, req.params.carrierId, true)));
+  api.delete('/favorites/:carrierId', ...C, requireCap('order.create'), h((req) => Mk.setFavorite(req.ctx, req.params.carrierId, false)));
+  api.post('/quote-requests', ...C, requireCap('order.create'), h((req) => Mk.requestQuote(req.ctx, req.body)));
+  api.get('/quote-requests', requireAuth, h((req) => Mk.listQuotes(req.ctx)));
+  api.post('/carrier/quote-requests/:id/respond', requireAuth, requireCap('carrier.dispatch'), h((req) => Mk.respondQuote(req.ctx, req.params.id, req.body)));
+  api.post('/orders/:id/reoffer', ...C, requireCap('order.create'), h((req) => trips.reofferOrder(req.ctx, req.params.id, req.body)));
+  api.get('/orders/:id/context', ...C, requireCap('order.create'), h((req) => {
+    const o = q.get(`SELECT o.*, ad.doc_number, ad.authorized_ml, lp.name loading_point_name, ca.name_ar carrier_name FROM orders o LEFT JOIN aramco_documents ad ON ad.id = o.aramco_document_id
+        JOIN loading_points lp ON lp.id = o.loading_point_id LEFT JOIN companies ca ON ca.id = o.carrier_id WHERE o.id = ? AND o.company_id = ?`, req.params.id, req.ctx.companyId);
+    if (!o) throw new HttpError(404, 'الطلب غير موجود');
+    const stops = q.all("SELECT s.site_id, s.mode, s.tank_id, SUM(s.requested_ml) ml FROM trip_stops s JOIN trips t ON t.id = s.trip_id WHERE t.order_id = ? AND t.status <> 'cancelled' GROUP BY s.site_id, s.mode, s.tank_id", o.id);
+    const ofs = q.all('SELECT f.carrier_id, f.status, f.deadline, f.reason, c.name_ar FROM order_offers f JOIN companies c ON c.id = f.carrier_id WHERE f.order_id = ? ORDER BY f.sent_at', o.id);
+    const toHHMM = (iso) => new Date(new Date(iso).getTime() + 3 * 3600e3).toISOString().slice(11, 16);
+    return { id: o.id, number: o.number, loading_point_id: o.loading_point_id, loading_point_name: o.loading_point_name, product: o.product, date: o.requested_date, window_start: toHHMM(o.window_start), window_end: toHHMM(o.window_end),
+      stops: stops.map((x) => ({ site_id: x.site_id, mode: x.mode, tank_id: x.tank_id, quantity_liters: x.ml / 1000 })), doc_number: o.doc_number, aramco_document_id: o.aramco_document_id,
+      needs_carrier: trips.needsCarrier(o.id), offers: ofs.map((f) => ({ ...f, status: f.status === 'pending' && f.deadline < now() ? 'expired' : f.status })) };
+  }));
   api.get('/trips', requireAuth, h((req) => {
     const c = req.ctx; const where = []; const p = [];
     if (c.companyType === 'client') { if (!c.can('order.view')) throw new HttpError(403, 'غير مصرح'); where.push('t.company_id = ?'); p.push(c.companyId); if (c.scopeProjectId) { where.push('o.project_id = ?'); p.push(c.scopeProjectId); } }
@@ -244,7 +289,8 @@ export function createApp() {
         ${showPrice ? 'o.transport_halalas,' : ''} lp.name loading_point_name, cl.name_ar client_name, ca.name_ar carrier_name, v.plate, d.name driver_name, p.name project_name,
         (SELECT GROUP_CONCAT(st.name, '، ') FROM trip_stops s JOIN sites st ON st.id = s.site_id WHERE s.trip_id = t.id) sites,
         (SELECT GROUP_CONCAT(DISTINCT st.city) FROM trip_stops s JOIN sites st ON st.id = s.site_id WHERE s.trip_id = t.id) cities,
-        (SELECT GROUP_CONCAT(DISTINCT s.mode) FROM trip_stops s WHERE s.trip_id = t.id) modes
+        (SELECT GROUP_CONCAT(DISTINCT s.mode) FROM trip_stops s WHERE s.trip_id = t.id) modes, o.id order_id, o.status order_status,
+        (SELECT CASE WHEN f.status = 'pending' AND f.deadline < strftime('%Y-%m-%dT%H:%M:%fZ','now') THEN 'expired' ELSE f.status END FROM order_offers f WHERE f.order_id = o.id ORDER BY f.sent_at DESC LIMIT 1) offer_status
       FROM trips t JOIN orders o ON o.id = t.order_id JOIN loading_points lp ON lp.id = o.loading_point_id JOIN companies cl ON cl.id = t.company_id JOIN companies ca ON ca.id = t.carrier_id
       LEFT JOIN vehicles v ON v.id = t.vehicle_id LEFT JOIN drivers d ON d.id = t.driver_id LEFT JOIN projects p ON p.id = o.project_id
       WHERE ${where.join(' AND ')} ORDER BY t.created_at DESC LIMIT 300`, ...p).map((t) => ({ ...t, status_ar: trips.TRIP_STATUS_AR[t.status], client_name: c.companyType === 'carrier' || c.role === 'driver' ? t.client_name : undefined }));
@@ -372,6 +418,7 @@ export function createApp() {
     drivers: q.all('SELECT d.*, u.email FROM drivers d LEFT JOIN users u ON u.id = d.user_id WHERE d.company_id = ? ORDER BY name', req.ctx.companyId),
     prices: q.all('SELECT rp.*, lp.name loading_point_name FROM route_prices rp JOIN loading_points lp ON lp.id = rp.loading_point_id WHERE carrier_id = ? ORDER BY lp.name, delivery_city', req.ctx.companyId),
     coverage: q.all('SELECT * FROM carrier_coverage WHERE carrier_id = ?', req.ctx.companyId),
+    logo_url: q.get('SELECT logo_file_id FROM companies WHERE id = ?', req.ctx.companyId).logo_file_id ? `/api/public/logos/${req.ctx.companyId}` : null,
   })));
   api.post('/carrier/vehicles', ...K, requireCap('carrier.fleet'), h((req) => {
     const b = req.body; if (!b.plate || !b.capacity_liters) throw new HttpError(400, 'اللوحة والسعة مطلوبتان');
@@ -392,6 +439,18 @@ export function createApp() {
     });
     return { id };
   }));
+  api.post('/carrier/logo', ...K, requireCap('carrier.fleet'), upload.single('logo'), h((req) => {
+    if (!req.file || !req.file.mimetype.startsWith('image/')) throw new HttpError(400, 'أرفق صورة الشعار (PNG أو JPG أو WEBP)');
+    const f = docs.storeFile(req.ctx, req.file, 'company_logo');
+    q.run('UPDATE companies SET logo_file_id = ? WHERE id = ?', f.id, req.ctx.companyId);
+    audit(req.ctx, 'company.logo', 'company', req.ctx.companyId); return { ok: true, logo_url: `/api/public/logos/${req.ctx.companyId}` };
+  }));
+  api.post('/carrier/coverage', ...K, requireCap('carrier.prices'), h((req) => {
+    const { kind, ref } = req.body; if (!['loading', 'delivery'].includes(kind) || !ref) throw new HttpError(400, 'حدد نوع التغطية والموقع');
+    if (kind === 'loading' && !q.get('SELECT 1 FROM loading_points WHERE id = ?', ref)) throw new HttpError(400, 'نقطة تحميل غير معروفة');
+    q.run('INSERT OR IGNORE INTO carrier_coverage(id,carrier_id,kind,ref) VALUES (?,?,?,?)', uid('cov_'), req.ctx.companyId, kind, String(ref).trim()); return { ok: true };
+  }));
+  api.delete('/carrier/coverage/:id', ...K, requireCap('carrier.prices'), h((req) => { q.run('DELETE FROM carrier_coverage WHERE id = ? AND carrier_id = ?', req.params.id, req.ctx.companyId); return { ok: true }; }));
   api.post('/carrier/prices/:id/toggle', ...K, requireCap('carrier.prices'), h((req) => { q.run('UPDATE route_prices SET active = 1 - active WHERE id = ? AND carrier_id = ?', req.params.id, req.ctx.companyId); return { ok: true }; }));
 
   /* ---------------- السائق ---------------- */

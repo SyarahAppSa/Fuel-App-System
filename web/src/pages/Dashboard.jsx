@@ -81,8 +81,9 @@ export default function Dashboard() {
         </div>
 
         {/* التنبيهات */}
-        {(lowTanks.length > 0 || pending > 0) && (
+        {(lowTanks.length > 0 || pending > 0 || d.needs_carrier?.length > 0) && (
           <div className="alerts">
+            {(d.needs_carrier || []).map((o) => <div key={o.id} className="al bad" onClick={() => navigate('/orders/new?reoffer=' + o.id)}><Truck size={15} /> الطلب {o.number}: اعتذر الناقل أو انتهت مهلته — اختر ناقلًا آخر</div>)}
             {lowTanks.map((t) => <div key={t.id} className="al warn" onClick={() => navigate('/tanks/' + t.id)}><AlertTriangle size={15} /> الخزان {t.code} تحت حد إعادة الطلب — اطلب نقلًا</div>)}
             {d.awaiting_receipt_confirmation > 0 && <div className="al warn" onClick={() => navigate('/trips?status=delivered')}><PackageCheck size={15} /> {d.awaiting_receipt_confirmation} تسليم بانتظار تأكيد الاستلام</div>}
             {d.open_exceptions.map((e) => <div key={e.type} className="al bad" onClick={() => navigate('/approvals')}><AlertTriangle size={15} /> {e.n} {EXC_TYPE[e.type] || e.type} بانتظار القرار</div>)}

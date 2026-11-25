@@ -126,6 +126,8 @@ export function dashboard(ctx, f = {}) {
   const onTime = withWindow.filter((t) => t.delivered_at <= t.window_end).length;
   const tripsByStatus = q.all(`SELECT t.status, COUNT(*) n FROM trips t JOIN orders o ON o.id = t.order_id WHERE t.company_id = ?` + (projectFilter ? ' AND o.project_id = ?' : '') + ' GROUP BY t.status', ...[c, projectFilter].filter(Boolean));
   const openEx = q.all("SELECT type, COUNT(*) n FROM exceptions WHERE company_id = ? AND status='open' GROUP BY type", c);
+  const needsCarrier = q.all(`SELECT o.id, o.number, (SELECT t.id FROM trips t WHERE t.order_id = o.id LIMIT 1) trip_id FROM orders o WHERE o.company_id = ? AND (o.status = 'rejected'
+      OR (o.status = 'pending_carrier' AND NOT EXISTS (SELECT 1 FROM order_offers f WHERE f.order_id = o.id AND f.status = 'pending' AND f.deadline >= ?)))`, c, now());
   const awaitingConfirm = q.get("SELECT COUNT(*) n FROM trip_stops s JOIN trips t ON t.id = s.trip_id WHERE t.company_id = ? AND s.status='delivered'", c).n;
   const lowTanks = tanks.filter((t) => t.book_ml <= t.reorder_ml);
   const daily = q.all(`SELECT substr(datetime(created_at,'+3 hours'),1,10) d, SUM(quantity_ml) ml FROM fuelings WHERE company_id = ? AND status='approved' AND created_at >= ?` + (projectFilter ? ' AND project_id = ?' : '') + ' GROUP BY d ORDER BY d',
@@ -155,7 +157,7 @@ export function dashboard(ctx, f = {}) {
         JOIN companies ca ON ca.id = t.carrier_id LEFT JOIN users u ON u.id = e.actor_user_id WHERE t.company_id = ? AND e.to_status IS NOT NULL ORDER BY e.received_at DESC LIMIT 6`, c),
   ].sort((x, y) => y.at.localeCompare(x.at)).slice(0, 8).map((r) => ({ ...r, status_ar: r.status ? TRIP_STATUS_AR[r.status] : undefined }));
   return {
-    generated_at: now(), counts, month_issued_ml: month, recent,
+    generated_at: now(), counts, month_issued_ml: month, recent, needs_carrier: needsCarrier,
     received_ml: received.s, received_count: received.n,
     issued_ml: issued.s, issued_count: issued.n,
     stock_ml: tanks.reduce((s, t) => s + t.book_ml, 0), direct_balance_ml: directBatches,

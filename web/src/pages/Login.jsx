@@ -49,6 +49,7 @@ export default function Login({ onDone, open }) {
           <input className="input" type="password" placeholder="كلمة المرور" value={password} onChange={(e) => setPassword(e.target.value)} required />
           <button className="btn primary lg" disabled={busy}><LogIn size={18} /> دخول</button>
         </form>
+        <div className="small" style={{ marginTop: 10 }}>شركة نقل؟ <a href="/register" style={{ color: 'var(--brand)', fontWeight: 600 }}>سجّل شركتك في فيول آب</a></div>
         <div className="sep" style={{ margin: '22px 0 14px' }} />
         {open && <button className="btn primary lg block mb" disabled={busy} onClick={async () => { setBusy(true); try { await demoEnter(); history.replaceState(null, '', '/'); onDone(); } catch (err) { fail(err); } finally { setBusy(false); } }}>دخول بوابة الإدارة مباشرة (بلا كلمة مرور)</button>}
         <div className="small muted mb">{open ? 'أو اختر أي حساب تجريبي — دخول بضغطة دون كلمة مرور' : <>حسابات التجربة (كلمة المرور: <b className="num">FuelApp@2026</b>)</>}</div>

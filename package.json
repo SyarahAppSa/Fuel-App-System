@@ -12,7 +12,7 @@
     "start": "node --no-warnings server/index.js",
     "dev:web": "vite web",
     "build": "vite build web",
-    "test": "node --no-warnings --test --test-reporter=spec tests/acceptance.test.js tests/scenario.test.js tests/contracts.test.js tests/admin.test.js"
+    "test": "node --no-warnings --test --test-reporter=spec tests/acceptance.test.js tests/scenario.test.js tests/contracts.test.js tests/admin.test.js tests/carrier-choice.test.js"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

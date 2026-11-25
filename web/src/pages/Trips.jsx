@@ -29,7 +29,7 @@ export function TripList() {
               <tr key={t.id} className="click" onClick={() => navigate('/trips/' + t.id)}>
                 <td><b className="num">{t.number}</b><div className="tiny muted">{t.order_number}{t.project_name ? ' · ' + t.project_name : ''}</div></td>
                 <td><Chip tone={TRIP_TONE[t.status]}>{t.status_ar}</Chip>{t.status === 'awaiting_acceptance' && t.accept_deadline && <div className="tiny muted">مهلة القبول {ago(t.accept_deadline).replace('قبل', 'منذ')}</div>}</td>
-                <td>{isCarrier ? t.client_name : t.carrier_name}</td>
+                <td>{isCarrier ? t.client_name : <>{t.carrier_name}{t.offer_status && t.status === 'awaiting_acceptance' || t.order_status === 'rejected' ? <div><Chip tone={{ pending: 'warn', rejected: 'bad', expired: 'bad', accepted: 'good' }[t.offer_status]}>{{ pending: 'بانتظار رده', rejected: 'اعتذر', expired: 'انتهت مهلته', accepted: 'قبل' }[t.offer_status]}</Chip></div> : null}</>}</td>
                 <td className="small">{t.loading_point_name} ← {t.sites}<div className="tiny muted">{t.modes?.includes('direct') ? 'تزويد مباشر' : 'إلى خزان'}</div></td>
                 <td><span className="num">{liters(t.quantity_ml)}</span> لتر<div className="tiny muted">{PRODUCTS[t.product]}</div></td>
                 <td className="small">{dt(t.window_start)}</td>
@@ -117,6 +117,9 @@ export function TripDetail({ id }) {
         <a className="btn" href={`/api/trips/${t.id}/report?token=${auth.token}`} target="_blank" rel="noreferrer"><Printer size={16} /> تقرير التوثيق (PDF)</a>
       </div>
       {!['cancelled', 'rejected'].includes(t.status) && <div className="card mb" style={{ padding: '16px 16px 10px' }}><Steps steps={FLOW.map(([key, label]) => ({ key, label }))} current={t.status} done={done} /></div>}
+      {t.needs_carrier && <div className="mb"><Alert tone="bad"><div className="row"><span className="grow"><b>{t.offers.find((f) => f.status === 'rejected' && f.carrier_id === t.carrier_id) ? `اعتذر ${t.carrier_name} عن الطلب` : `انتهت مهلة رد ${t.carrier_name}`}</b>{t.offers.find((f) => f.carrier_id === t.carrier_id)?.reason ? ` — ${t.offers.find((f) => f.carrier_id === t.carrier_id).reason}` : ''}. يمكنك إرسال الطلب نفسه لناقل آخر.</span>
+        {can(me, 'order.create') && <button className="btn primary" onClick={() => navigate('/orders/new?reoffer=' + t.order_id)}>اختر ناقلًا آخر</button>}</div></Alert></div>}
+      {isClient && !t.needs_carrier && t.status === 'awaiting_acceptance' && <div className="mb"><Alert tone="info">أُرسل الطلب إلى <b>{t.carrier_name}</b> وحده — بانتظار رده حتى {dt(t.offers.find((f) => f.carrier_id === t.carrier_id && f.status === 'pending')?.deadline || t.accept_deadline)}.</Alert></div>}
       {t.status === 'under_review' && <Alert tone="bad">الرحلة بانتظار المراجعة: {t.exceptions.filter((e) => e.status === 'open').map((e) => e.title).join('، ')} — <a href="/approvals" onClick={(e) => { e.preventDefault(); navigate('/approvals'); }} style={{ textDecoration: 'underline' }}>الموافقات</a></Alert>}
       {t.missing_proofs.length > 0 && ['delivered', 'under_review', 'closed'].includes(t.status) && <Alert tone="warn">إثباتات ناقصة: {t.missing_proofs.map((m) => PHOTO[m.kind] + (m.seq ? ` (نقطة ${m.seq})` : '')).join('، ')}</Alert>}
 

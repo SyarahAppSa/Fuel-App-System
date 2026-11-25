@@ -661,3 +661,31 @@ CREATE TABLE IF NOT EXISTS supply_offers (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   responded_at TEXT
 );
+
+-- ========== اختيار شركة النقل: طلبات عروض الأسعار والناقلون المفضلون ==========
+CREATE TABLE IF NOT EXISTS quote_requests (
+  id TEXT PRIMARY KEY,
+  number TEXT NOT NULL UNIQUE,
+  client_id TEXT NOT NULL REFERENCES companies(id),
+  carrier_id TEXT NOT NULL REFERENCES companies(id),
+  loading_point_id TEXT NOT NULL REFERENCES loading_points(id),
+  delivery_city TEXT NOT NULL,
+  site_id TEXT REFERENCES sites(id),
+  product TEXT NOT NULL,
+  quantity_ml INTEGER NOT NULL,
+  requested_date TEXT NOT NULL,
+  window_start TEXT, window_end TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','quoted','declined','used','expired')),
+  price_halalas INTEGER,           -- أجرة النقل الإجمالية المعروضة للطلب
+  valid_until TEXT,
+  earliest_date TEXT,
+  carrier_note TEXT,
+  created_by TEXT, responded_by TEXT, responded_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE IF NOT EXISTS favorite_carriers (
+  client_id TEXT NOT NULL REFERENCES companies(id),
+  carrier_id TEXT NOT NULL REFERENCES companies(id),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  PRIMARY KEY (client_id, carrier_id)
+);

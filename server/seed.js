@@ -60,6 +60,14 @@ export async function seedDemo({ history = true } = {}) {
   price('rp_c2_dmm', 'co_car2', 'lp_dmm', 'الدمام', 'diesel', 'per_1000l', 42);
   price('rp_c2_ryd', 'co_car2', 'lp_ryd', 'الرياض', 'diesel', 'per_1000l', 46);
 
+  // ---- ناقل يغطي مسار الرياض دون سعر منشور (يُطلب منه عرض سعر) ----
+  company('co_car4', 'carrier', 'ناقلات النخبة (تجريبي)', 'Elite Tankers (Demo)', 'الرياض');
+  member(user('carrier4@fuelapp.demo', 'بدر المطيري', '0556000001'), 'co_car4', 'carrier_admin');
+  q.run("INSERT INTO vehicles(id,company_id,plate,capacity_ml,products,docs_valid_until) VALUES ('veh_7','co_car4','ق ر ب 3340',?, 'diesel', '2028-02-28'), ('veh_8','co_car4','ق ر ب 3341',?, 'diesel', '2028-02-28')", ML(36000), ML(24000));
+  q.run("INSERT INTO drivers(id,company_id,name,phone,license_no,license_expiry) VALUES ('drv_7','co_car4','فيصل العنزي','0556000007','L-441902','2028-06-01')");
+  for (const [k, r] of [['loading', 'lp_ryd'], ['delivery', 'الرياض']]) q.run('INSERT INTO carrier_coverage(id,carrier_id,kind,ref) VALUES (?,?,?,?)', uid('cov_'), 'co_car4', k, r);
+  q.run("INSERT INTO company_documents(id,company_id,doc_type,number,expires_at,status) VALUES (?, 'co_car4', 'transport_license', '5503321', '2027-09-30', 'approved')", uid('cd_'));
+
   // ---- ناقل بانتظار الاعتماد ----
   company('co_car3', 'carrier', 'مؤسسة الجنوب للنقليات (تجريبي)', 'South Haulage (Demo)', 'أبها', 'pending');
   member(user('carrier3@fuelapp.demo', 'سعيد القرني'), 'co_car3', 'carrier_admin');

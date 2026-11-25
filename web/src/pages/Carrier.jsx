@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Truck, UserRound, Tag, Route, Wallet, Clock } from 'lucide-react';
+import { Logo } from './NewOrder.jsx';
 import { api, useApi, navigate, liters, sar, dOnly, fail, toast, PRODUCTS, TRIP_TONE } from '../lib.js';
 import { Card, Chip, Spinner, Empty, Modal, Field, Kpi } from '../ui.jsx';
 import { Title, useMe, can } from '../ctx.jsx';
@@ -51,6 +52,17 @@ export function Fleet() {
             <td>{d.license_expiry < today ? <Chip tone="bad">رخصة منتهية</Chip> : <Chip tone="good">حتى {d.license_expiry}</Chip>}</td><td className="small muted">{d.email ? 'لديه حساب' : 'بدون حساب'}</td></tr>)}</tbody></table>
         </Card>
       </div>
+      <div className="grid g2 mt">
+        <Card title="شعار الشركة" icon={<Tag size={16} />}>
+          <div className="row"><Logo name={me.company.name} url={r.data.logo_url} size={64} /><div className="grow small muted">يظهر للعملاء في بطاقة «اختر شركة النقل».</div>
+            {can(me, 'carrier.fleet') && <label className="btn sm primary">رفع شعار<input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={async (e) => { const f = e.target.files[0]; if (!f) return; const fd = new FormData(); fd.append('logo', f); try { await api('/carrier/logo', { method: 'POST', form: fd }); toast('حُدّث الشعار'); r.reload(); } catch (err) { fail(err); } }} /></label>}</div>
+        </Card>
+        <Card title="مناطق الخدمة" icon={<Route size={16} />} actions={can(me, 'carrier.prices') && <button className="btn sm" onClick={() => setModal('cov')}><Plus size={14} /> منطقة</button>}>
+          <div className="small muted mb">تظهر شركتك للعملاء على كل مسار تغطي نقطة تحميله ومدينة تسليمه — بسعر منشور أو بطلب عرض سعر.</div>
+          <div className="row">{r.data.coverage.map((c) => <Chip key={c.id} tone={c.kind === 'loading' ? 'info' : 'brand'}>{c.kind === 'loading' ? 'تحميل: ' + (lk?.loading_points.find((l) => l.id === c.ref)?.name || c.ref) : 'تسليم: ' + c.ref}
+            {can(me, 'carrier.prices') && <button className="btn ghost sm" style={{ padding: '0 4px' }} onClick={() => api('/carrier/coverage/' + c.id, { method: 'DELETE' }).then(r.reload)}>×</button>}</Chip>)}</div>
+        </Card>
+      </div>
       <Card className="mt" title="أسعار المسارات" icon={<Tag size={16} />} actions={can(me, 'carrier.prices') && <button className="btn sm primary" onClick={() => setModal('price')}><Plus size={14} /> سعر مسار</button>} flush>
         <table className="t"><thead><tr><th>نقطة التحميل</th><th>مدينة التسليم</th><th>المنتج</th><th>التسعير</th><th>السعر</th><th>الانتظار</th><th>الإلغاء</th><th>الحالة</th></tr></thead>
           <tbody>{r.data.prices.map((p) => <tr key={p.id}><td>{p.loading_point_name}</td><td>{p.delivery_city}</td><td>{PRODUCTS[p.product]}</td><td>{p.pricing_type === 'fixed' ? 'ثابت للمسار' : 'لكل 1000 لتر'}</td>
@@ -58,6 +70,10 @@ export function Fleet() {
             <td><button className={'chip ' + (p.active ? 'good' : '')} onClick={() => api(`/carrier/prices/${p.id}/toggle`, { method: 'POST' }).then(r.reload)}>{p.active ? 'منشور' : 'موقوف'}</button></td></tr>)}</tbody></table>
         <div className="small muted" style={{ padding: 12 }}>تغطية التحميل: {r.data.coverage.filter((c) => c.kind === 'loading').map((c) => lk?.loading_points.find((l) => l.id === c.ref)?.name).join('، ')} · تغطية التسليم: {r.data.coverage.filter((c) => c.kind === 'delivery').map((c) => c.ref).join('، ')}</div>
       </Card>
+      {modal === 'cov' && lk && <Modal title="إضافة منطقة خدمة" onClose={() => setModal(null)}><form className="stack" onSubmit={post('/carrier/coverage')}>
+        <Field label="النوع"><select name="kind" className="input"><option value="loading">نقطة تحميل</option><option value="delivery">مدينة تسليم</option></select></Field>
+        <Field label="نقطة التحميل أو المدينة" hint="لنقطة التحميل اختر من القائمة؛ للمدينة اكتب اسمها"><input name="ref" className="input" list="covlist" required /><datalist id="covlist">{lk.loading_points.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}{lk.cities.map((c) => <option key={c} value={c} />)}</datalist></Field>
+        <button className="btn primary">إضافة</button></form></Modal>}
       {modal === 'veh' && <Modal title="إضافة صهريج" onClose={() => setModal(null)}><form className="stack" onSubmit={post('/carrier/vehicles', (x) => ({ ...x, products: [x.products] }))}>
         <Field label="اللوحة"><input name="plate" className="input" required /></Field><Field label="السعة (لتر)"><input name="capacity_liters" type="number" className="input" required /></Field>
         <Field label="المنتج"><select name="products" className="input">{Object.entries(PRODUCTS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>

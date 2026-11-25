@@ -24,7 +24,8 @@ export function openDb(file = process.env.FUELAPP_DB || path.join(ROOT, 'data', 
 function migrate(d) {
   const cols = (t) => d.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name);
   const oc = cols('orders');
-  for (const c of ['contract_id', 'contract_rate_id', 'package_id', 'reservation_id']) if (!oc.includes(c)) d.exec(`ALTER TABLE orders ADD COLUMN ${c} TEXT`);
+  for (const c of ['contract_id', 'contract_rate_id', 'package_id', 'reservation_id', 'quote_request_id']) if (!oc.includes(c)) d.exec(`ALTER TABLE orders ADD COLUMN ${c} TEXT`);
+  if (!cols('companies').includes('logo_file_id')) d.exec('ALTER TABLE companies ADD COLUMN logo_file_id TEXT');
 }
 
 export function getDb() {

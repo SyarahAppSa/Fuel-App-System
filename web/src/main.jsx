@@ -11,7 +11,9 @@ applyPalette(getPalette());
 import { Toaster, Spinner, PalettePicker } from './ui.jsx';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
-import { NewOrder, Documents } from './pages/Orders.jsx';
+import { Documents } from './pages/Orders.jsx';
+import { NewOrder } from './pages/NewOrder.jsx';
+import { Quotes, Register } from './pages/Quotes.jsx';
 import { TripList, TripDetail } from './pages/Trips.jsx';
 import { AssetList, AssetReport } from './pages/Assets.jsx';
 import NfcTags from './pages/Nfc.jsx';
@@ -52,6 +54,7 @@ const CARRIER_NAV = [
   { to: '/', label: 'نظرة عامة', icon: LayoutDashboard },
   { to: '/trips', label: 'الطلبات والرحلات', icon: Route },
   { to: '/fleet', label: 'الأسطول والأسعار', icon: Truck },
+  { to: '/quotes', label: 'طلبات عروض الأسعار', icon: FileText },
   { to: '/contracts', label: 'العقود والباقات والسعة', icon: FileSignature },
 ];
 const DRIVER_NAV = [{ grp: 'السائق' }, { to: '/', label: 'رحلاتي', icon: Truck }];
@@ -65,7 +68,7 @@ function routes(me) {
   if (t === 'platform') return [['/', AdminHome], ['/admin/records', AdminRecords], ['/admin/companies', AdminCompanies], ['/admin/companies/:id', AdminCompany], ['/admin/search', AdminSearch],
     ['/admin/orders/:id', AdminOrder], ['/admin/reports', AdminReports], ['/admin/audit', AdminAudit], ['/admin/approvals', Admin], ['/trips', TripList], ['/trips/:id', TripDetail]];
   if (role === 'driver') return [['/', DriverHome], ['/trips/:id', DriverTrip]];
-  if (t === 'carrier') return [['/', CarrierOverview], ['/trips', TripList], ['/trips/:id', TripDetail], ['/fleet', Fleet], ['/contracts', Contracts]];
+  if (t === 'carrier') return [['/', CarrierOverview], ['/trips', TripList], ['/trips/:id', TripDetail], ['/fleet', Fleet], ['/contracts', Contracts], ['/quotes', Quotes]];
   if (role === 'site_receiver') return [['/', TripList], ['/trips', TripList], ['/trips/:id', TripDetail]];
   return [
     ['/', role === 'fuel_supervisor' ? FuelSession : Dashboard], ['/dashboard', Dashboard], ['/orders/new', NewOrder], ['/documents', Documents], ['/trips', TripList], ['/trips/:id', TripDetail],
@@ -170,6 +173,7 @@ function App() {
   useEffect(() => { load(); }, []);
   const r = match('/r/:token', path);
   if (r) return <Receipt token={r.token} />;
+  if (path.split('?')[0] === '/register') return <Register />;
   if (me === undefined) return <Spinner />;
   if (!me) return <Login onDone={load} open={open} />;
   return <Shell me={me} reloadMe={load} openDemo={open} />;
