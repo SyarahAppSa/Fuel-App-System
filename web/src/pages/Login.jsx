@@ -41,7 +41,7 @@ export default function Login({ onDone, open }) {
         <div className="small" style={{ color: '#6f8699' }}>بيئة عرض — جميع البيانات تجريبية</div>
       </div>
       <div className="form">
-        <div style={{ alignSelf: 'flex-start', marginBottom: 12 }}><PalettePicker /></div>
+        <div style={{ alignSelf: 'flex-start', marginBottom: 12, minWidth: 260 }}><PalettePicker down /></div>
         <h2 style={{ fontSize: 24, marginBottom: 6 }}>تسجيل الدخول</h2>
         <p className="muted" style={{ marginTop: 0 }}>اختر حساب تجربة أو ادخل ببريدك.</p>
         <form onSubmit={login} className="stack">

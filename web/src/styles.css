@@ -328,3 +328,86 @@ dd.num { display: block; direction: ltr; text-align: right; }
 .palette-pick { display: flex; gap: 8px; align-items: center; justify-content: center; padding: 4px 0 2px; }
 .palette-pick button { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line-2); cursor: pointer; padding: 0; }
 .palette-pick button.on { box-shadow: 0 0 0 2px var(--ink); }
+
+/* ================= الدفعة الثانية: ألوان إضافية ودمج بين لونين ================= */
+/* دمج 1) الملكي الذهبي: كحلي الشعار يتدرج إلى برونزي ذهبي */
+:root[data-palette="royalgold"] {
+  --accent: #c00000; --data: #2a40c8; --data-soft: #e6e9fb;
+  --g0: #05073f; --g1: #05096e; --g2: #2236c2; --g3: #c9a227; --hero-mid: #000098;
+  --bar-a: #000098; --bar-b: #9a7a1c; --card-a: #05096e; --card-b: #1a1db5; --card-c: #a8861f;
+  --bal-a: #1a1db5; --bal-b: #0d14a0; --bal-c: #6b5212; --bub-ink: #8a6a10;
+}
+/* دمج 2) ألوان الشعار: كحلي يتدرج إلى الأحمر */
+:root[data-palette="logo"] {
+  --accent: #c00000; --data: #1a1db5; --data-soft: #e6e9fb;
+  --g0: #05073f; --g1: #05096e; --g2: #3a1a8c; --g3: #c00000; --hero-mid: #2b0f6b;
+  --bar-a: #000098; --bar-b: #c00000; --card-a: #05096e; --card-b: #2b1592; --card-c: #b0102a;
+  --bal-a: #b0102a; --bal-b: #3a1a8c; --bal-c: #05096e; --bub-ink: #c00000;
+}
+/* دمج 3) البترولي الزمردي: أزرق بترولي يتدرج إلى أخضر */
+:root[data-palette="petrolemerald"] {
+  --ink: #0a2e2b; --ink-2: #0d4540; --ink-3: #2f6e66;
+  --bg: #f2f7f6; --surface-2: #f8fbfa; --line: #e1ecea; --line-2: #cddfdb;
+  --text: #10262a; --text-2: #3f5a57; --muted: #7c928f;
+  --brand: #0f766e; --brand-2: #0a5550; --brand-soft: #e0f2ef; --brand-softer: #f1f9f7; --accent: #d97706;
+  --data: #0f766e; --data-soft: #dcf1ec;
+  --g0: #031c1c; --g1: #073741; --g2: #0d6a5d; --g3: #22a06b; --hero-mid: #0a5550;
+  --bar-a: #0a5562; --bar-b: #1f9a66; --card-a: #073741; --card-b: #0f766e; --card-c: #1f9a66;
+  --bal-a: #1f9a66; --bal-b: #0f766e; --bal-c: #073741; --bub-ink: #0f766e;
+  --tint: 7,55,50; --bg-rgb: 242,247,246; --on-dark-soft: #cdebe4;
+}
+/* دمج 4) الغروب: نيلي يتدرج إلى برتقالي */
+:root[data-palette="dusk"] {
+  --ink: #1e1b4b; --ink-2: #312e81; --ink-3: #4f4b9e;
+  --bg: #f5f4fb; --surface-2: #faf9fe; --line: #e8e6f5; --line-2: #d6d3ee;
+  --text: #18173a; --text-2: #4a4870; --muted: #8784a6;
+  --brand: #4338ca; --brand-2: #312e81; --brand-soft: #ebe9fb; --brand-softer: #f5f4fd; --accent: #c2410c;
+  --data: #4338ca; --data-soft: #e7e5fb;
+  --g0: #0f0d2e; --g1: #1e1b4b; --g2: #4338ca; --g3: #ea580c; --hero-mid: #312e81;
+  --bar-a: #312e81; --bar-b: #c2410c; --card-a: #1e1b4b; --card-b: #4338ca; --card-c: #c2410c;
+  --bal-a: #c2410c; --bal-b: #4338ca; --bal-c: #1e1b4b; --bub-ink: #c2410c;
+  --tint: 30,27,75; --bg-rgb: 245,244,251; --on-dark-soft: #dcdaf7;
+}
+/* مفرد 4) الصحراوي: تيراكوتا وبني دافئ على خلفية رملية */
+:root[data-palette="desert"] {
+  --ink: #3b2a1c; --ink-2: #5a3f28; --ink-3: #7d5d42;
+  --bg: #f7f3ec; --surface-2: #fbf8f3; --line: #ece3d6; --line-2: #ddd0bd;
+  --text: #2b2118; --text-2: #5c4d3f; --muted: #8f8170;
+  --brand: #9a3f12; --brand-2: #7a3010; --brand-soft: #f6e8dc; --brand-softer: #fbf4ee; --accent: #0f7686;
+  --data: #b4531c; --data-soft: #f6e4d6;
+  --g0: #1f150d; --g1: #3b2a1c; --g2: #7a3010; --g3: #c2733a; --hero-mid: #5a3f28;
+  --bar-a: #5a3f28; --bar-b: #b4531c; --card-a: #3b2a1c; --card-b: #7a3010; --card-c: #b4531c;
+  --bal-a: #9a3f12; --bal-b: #5a3f28; --bal-c: #3b2a1c; --bub-ink: #9a3f12;
+  --tint: 59,42,28; --bg-rgb: 247,243,236; --on-dark-soft: #efdfcf;
+}
+/* مفرد 5) البنفسجي الذهبي: نمط المرجع الذي أرسلته */
+:root[data-palette="violetgold"] {
+  --ink: #2a1a52; --ink-2: #3b2870; --ink-3: #5b44a0;
+  --bg: #f5f3fb; --surface-2: #faf9fe; --line: #ece8f6; --line-2: #dcd5ef;
+  --text: #1d1730; --text-2: #4d4766; --muted: #8a84a3;
+  --brand: #6d3fc0; --brand-2: #4a2a8a; --brand-soft: #efe9fb; --brand-softer: #f6f2fd; --accent: #b8860b;
+  --data: #6250d6; --data-soft: #ebe8fb;
+  --g0: #1d1040; --g1: #3d1f7c; --g2: #5a3aa6; --g3: #8f63dc; --hero-mid: #4a2a8a;
+  --bar-a: #5a3aa6; --bar-b: #7d55c9; --card-a: #3b2075; --card-b: #6d3fc0; --card-c: #8f63dc;
+  --bal-a: #6c45c6; --bal-b: #4f2d98; --bal-c: #3d1f7c; --bub-ink: #6d3fc0;
+  --tint: 42,26,82; --bg-rgb: 245,243,251; --on-dark-soft: #e6dcfa;
+}
+/* مفرد 6) السماوي النحاسي: أزرق سماوي مع لمسات نحاسية */
+:root[data-palette="skycopper"] {
+  --ink: #0c2d48; --ink-2: #0c4a6e; --ink-3: #2f6f96;
+  --bg: #f2f7fb; --surface-2: #f8fbfd; --line: #e2edf5; --line-2: #cfe0ec;
+  --text: #0f2233; --text-2: #3d5568; --muted: #7b8fa0;
+  --brand: #0369a1; --brand-2: #075985; --brand-soft: #e0f0fa; --brand-softer: #f1f8fd; --accent: #b45309;
+  --data: #0284c7; --data-soft: #dbeefa;
+  --g0: #061a2b; --g1: #0c4a6e; --g2: #0369a1; --g3: #38a5dc; --hero-mid: #075985;
+  --bar-a: #075985; --bar-b: #b45309; --card-a: #0c4a6e; --card-b: #0369a1; --card-c: #38a5dc;
+  --bal-a: #0284c7; --bal-b: #075985; --bal-c: #0c4a6e; --bub-ink: #b45309;
+  --tint: 12,74,110; --bg-rgb: 242,247,251; --on-dark-soft: #d3e9f7;
+}
+.palette-pick { flex-wrap: wrap; max-width: 260px; margin: 0 auto; }
+.palette-pick button { width: 24px; height: 24px; }
+.pal-menu { position: absolute; bottom: calc(100% + 8px); inset-inline: 0; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 40px rgba(0,0,0,.15); padding: 10px; z-index: 40; max-height: 60vh; overflow-y: auto; }
+.pal-menu .g { font-size: 11px; color: var(--muted); font-weight: 600; padding: 6px 6px 4px; }
+.pal-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 8px; border: 0; background: none; border-radius: 10px; cursor: pointer; font-size: 13px; text-align: start; }
+.pal-menu button:hover, .pal-menu button.on { background: var(--brand-softer); }
+.pal-menu .sw { width: 34px; height: 18px; border-radius: 9px; flex-shrink: 0; }

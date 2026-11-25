@@ -94,10 +94,17 @@ export function getPosition() {
 
 /* ---------------- لوحة الألوان ---------------- */
 export const PALETTES = [
-  { key: 'royal', label: 'الملكي (الحالي)', swatch: ['#1a1db5', '#05096e'], meta: '#000098' },
-  { key: 'petrol', label: 'البترولي', swatch: ['#0f7686', '#e8900c'], meta: '#0a5562' },
-  { key: 'emerald', label: 'الزمردي', swatch: ['#0f7a4f', '#b8860b'], meta: '#0a5c3b' },
-  { key: 'graphite', label: 'الفحمي', swatch: ['#ea580c', '#1b1e24'], meta: '#1b1e24' },
+  { key: 'royal', group: 'الحالي', label: 'الملكي الكحلي', swatch: ['#1a1db5', '#05096e'], meta: '#000098' },
+  { key: 'petrol', group: 'ألوان مفردة', label: 'البترولي', swatch: ['#0f7686', '#e8900c'], meta: '#0a5562' },
+  { key: 'emerald', group: 'ألوان مفردة', label: 'الزمردي', swatch: ['#0f7a4f', '#b8860b'], meta: '#0a5c3b' },
+  { key: 'graphite', group: 'ألوان مفردة', label: 'الفحمي', swatch: ['#1b1e24', '#ea580c'], meta: '#1b1e24' },
+  { key: 'desert', group: 'ألوان مفردة', label: 'الصحراوي', swatch: ['#9a3f12', '#ddd0bd'], meta: '#5a3f28' },
+  { key: 'violetgold', group: 'ألوان مفردة', label: 'البنفسجي الذهبي', swatch: ['#6d3fc0', '#e0a92a'], meta: '#4a2a8a' },
+  { key: 'skycopper', group: 'ألوان مفردة', label: 'السماوي النحاسي', swatch: ['#0369a1', '#b45309'], meta: '#075985' },
+  { key: 'royalgold', group: 'دمج لونين', label: 'الملكي ← الذهبي', swatch: ['#1a1db5', '#a8861f'], meta: '#000098', blend: true },
+  { key: 'logo', group: 'دمج لونين', label: 'ألوان الشعار: كحلي ← أحمر', swatch: ['#000098', '#c00000'], meta: '#000098', blend: true },
+  { key: 'petrolemerald', group: 'دمج لونين', label: 'البترولي ← الزمردي', swatch: ['#0a5562', '#1f9a66'], meta: '#0a5550', blend: true },
+  { key: 'dusk', group: 'دمج لونين', label: 'الغروب: نيلي ← برتقالي', swatch: ['#312e81', '#c2410c'], meta: '#312e81', blend: true },
 ];
 export function getPalette() { try { return localStorage.getItem('hj_palette') || 'royal'; } catch { return 'royal'; } }
 export function applyPalette(key) {

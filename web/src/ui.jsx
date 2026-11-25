@@ -161,15 +161,21 @@ export function NfcReader({ onRead, demoTags = [], label = 'اقرأ شريحة 
   );
 }
 
-/** اختيار لوحة ألوان المنصة — يطبَّق فورًا ويُحفظ في المتصفح */
-export function PalettePicker({ label = true }) {
+/** اختيار لوحة ألوان المنصة — قائمة مجمّعة، يطبَّق فورًا ويُحفظ في المتصفح */
+export function PalettePicker({ down }) {
   const [cur, setCur] = useState(getPalette());
+  const [open, setOpen] = useState(false);
+  const p = PALETTES.find((x) => x.key === cur) || PALETTES[0];
+  const sw = (x) => ({ background: x.blend ? `linear-gradient(90deg, ${x.swatch[0]}, ${x.swatch[1]})` : `linear-gradient(90deg, ${x.swatch[0]} 60%, ${x.swatch[1]} 60%)` });
+  const groups = [...new Set(PALETTES.map((x) => x.group))];
   return (
-    <div>
-      {label && <div className="tiny muted" style={{ textAlign: 'center', marginBottom: 4 }}>ألوان المنصة: {PALETTES.find((p) => p.key === cur)?.label}</div>}
-      <div className="palette-pick">{PALETTES.map((p) => (
-        <button key={p.key} className={cur === p.key ? 'on' : ''} title={p.label} aria-label={'لوحة ' + p.label}
-          style={{ background: `linear-gradient(135deg, ${p.swatch[0]} 50%, ${p.swatch[1]} 50%)` }} onClick={() => setCur(applyPalette(p.key))} />))}</div>
+    <div style={{ position: 'relative' }}>
+      <button className="pill" style={{ width: '100%', borderStyle: 'dashed' }} onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span className="sw" style={{ ...sw(p), width: 30, height: 14, borderRadius: 7, display: 'inline-block' }} /> ألوان المنصة: {p.label}
+      </button>
+      {open && <div className="pal-menu" style={down ? { bottom: 'auto', top: 'calc(100% + 8px)', minWidth: 260 } : null}>{groups.map((g) => <div key={g}><div className="g">{g}</div>
+        {PALETTES.filter((x) => x.group === g).map((x) => <button key={x.key} className={cur === x.key ? 'on' : ''} onClick={() => { setCur(applyPalette(x.key)); }}>
+          <span className="sw" style={sw(x)} />{x.label}{cur === x.key && <b style={{ marginInlineStart: 'auto', color: 'var(--brand)' }}>✓</b>}</button>)}</div>)}</div>}
     </div>
   );
 }
